@@ -158,9 +158,29 @@ print(sum(1 for t in targets
   and t.get('health') == 'up'))
 " 2>/dev/null || echo "0")
 
+  EXPORTER_UP=$( python3 -c "
+import json, sys
+data = json.load(open('/tmp/prom_targets.json'))
+targets = data.get('data', {}).get('activeTargets', [])
+print(sum(1 for t in targets
+  if t.get('labels', {}).get('job') == 'kafka-exporter'
+  and t.get('health') == 'up'))
+" 2>/dev/null || echo "0")
+
+  STRIMZI_UP=$( python3 -c "
+import json, sys
+data = json.load(open('/tmp/prom_targets.json'))
+targets = data.get('data', {}).get('activeTargets', [])
+print(sum(1 for t in targets
+  if t.get('labels', {}).get('job') == 'strimzi-operator'
+  and t.get('health') == 'up'))
+" 2>/dev/null || echo "0")
+
   echo "  Total targets:         ${TOTAL}"
   echo "  Targets up:            ${UP}"
   echo "  Kafka brokers up:      ${KAFKA_UP}"
+  echo "  Kafka Exporter up:     ${EXPORTER_UP}"
+  echo "  Strimzi Operator up:   ${STRIMZI_UP}"
 
   if [[ "${KAFKA_UP}" -ge 3 ]]; then
     pass "All 3 Kafka broker targets are up"
@@ -169,9 +189,21 @@ print(sum(1 for t in targets
   else
     fail "No Kafka broker targets are up (metrics may not be enabled yet)"
   fi
+
+  if [[ "${EXPORTER_UP}" -ge 1 ]]; then
+    pass "Kafka Exporter target is up"
+  else
+    fail "Kafka Exporter target is down"
+  fi
+
+  if [[ "${STRIMZI_UP}" -ge 1 ]]; then
+    pass "Strimzi Operator target is up"
+  else
+    fail "Strimzi Operator target is down"
+  fi
 else
-  echo "  SKIP: Prometheus not reachable on localhost:9090"
-  echo "        Run 'make port-forward-prometheus' in a separate terminal first."
+  fail "Prometheus not reachable on localhost:9090"
+  echo "       Run 'make port-forward-prometheus' in a separate terminal first."
 fi
 
 echo ""

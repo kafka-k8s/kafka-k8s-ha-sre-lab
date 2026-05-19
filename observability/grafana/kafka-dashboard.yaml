@@ -8,7 +8,7 @@
 #     Active Brokers          count(up{job="kafka-brokers"} == 1)
 #     Under-Replicated Partitions  sum(kafka_server_replicamanager_underreplicatedpartitions)
 #     Offline Partitions       sum(kafka_controller_kafkacontroller_offlinepartitionscount)
-#     Strimzi Operator         up{job="strimzi-operator"}
+#     Strimzi Operator         max(up{job="strimzi-operator"}) or on() vector(0)
 #   Row 2 — Throughput
 #     Messages In/sec          rate(kafka_server_brokertopicmetrics_messagesinpersec_total[5m])
 #     Consumer Lag             kafka_consumergroup_lag{topic="learning-events"}
@@ -218,7 +218,7 @@ data:
           "targets": [
             {
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "up{job=\"strimzi-operator\"} or vector(0)",
+              "expr": "max(up{job=\"strimzi-operator\"}) or on() vector(0)",
               "instant": true,
               "legendFormat": "Strimzi Operator",
               "refId": "A"

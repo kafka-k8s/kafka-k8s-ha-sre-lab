@@ -101,6 +101,7 @@ install-strimzi:
 	STRIMZI_VERSION=$(STRIMZI_VERSION) NAMESPACE=$(NAMESPACE) KUBECTL_BIN=$(KUBECTL_BIN) bash scripts/install-strimzi.sh
 
 deploy-kafka:
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f manifests/kafka/kafka-metrics-config.yaml
 	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f manifests/kafka/kafka-cluster.yaml
 	@echo ""
 	@echo "Kafka resources applied. Strimzi will provision the cluster."

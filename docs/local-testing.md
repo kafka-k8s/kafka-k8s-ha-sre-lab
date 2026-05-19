@@ -304,7 +304,8 @@ This checks:
 - Grafana pod is 1/1 Ready.
 - Alertmanager pod is 1/1 Ready.
 - Kafka Exporter pod is 1/1 Ready.
-- If port-forward-prometheus is running: checks that all 3 kafka-broker targets are UP.
+- With `make port-forward-prometheus` running: checks that all 3 Kafka broker
+  targets, the Kafka Exporter target, and the Strimzi Operator target are UP.
 
 For manual validation:
 

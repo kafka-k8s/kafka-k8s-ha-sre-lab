@@ -1,7 +1,8 @@
 # End-to-End Local Validation
 
-This runbook validates the current MVP on local Kind with Docker. It does not
-install AWS/EKS, Elasticsearch, Prometheus, Grafana, or Alertmanager.
+This runbook validates the current MVP on local Kind with Docker, including the
+Phase 4 observability stack. It does not install AWS/EKS, Elasticsearch,
+MirrorMaker 2, or any cloud service.
 
 ## Prerequisites
 
@@ -97,11 +98,82 @@ Run consumer:
 make consume
 ```
 
+Deploy observability:
+
+```sh
+make deploy-observability
+make observability-status
+```
+
+Start observability port-forwards in separate terminals:
+
+```sh
+make port-forward-prometheus
+make port-forward-grafana
+make port-forward-alertmanager
+```
+
+Validate observability:
+
+```sh
+make validate-observability
+```
+
+Expected Prometheus targets:
+
+```text
+kafka-brokers     3 up
+kafka-exporter    1 up
+strimzi-operator  1 up
+prometheus        1 up
+```
+
+Useful Prometheus checks:
+
+```sh
+curl -G http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=count(up{job="kafka-brokers"} == 1)'
+
+curl -G http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=sum(kafka_server_replicamanager_underreplicatedpartitions)'
+
+curl -G http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=sum(kafka_controller_kafkacontroller_offlinepartitionscount)'
+
+curl -G http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=sum(kafka_controller_kafkacontroller_activecontrollercount)'
+
+curl -G http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=sum(kafka_consumergroup_lag{topic="learning-events"})'
+```
+
+Grafana should be reachable at <http://localhost:3000> with `admin/admin`.
+The provisioned dashboard is `Kafka Overview`:
+
+```text
+http://localhost:3000/d/kafka-overview/kafka-overview
+```
+
+Alertmanager should be reachable at <http://localhost:9093>.
+
 Simulate broker failure:
 
 ```sh
 make kill-broker
 ```
+
+Observe Prometheus and Grafana for up to two minutes:
+
+```sh
+curl -G http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=min_over_time((count(up{job="kafka-brokers"} == 1))[5m:15s])'
+
+curl -s http://localhost:9090/api/v1/alerts | python3 -m json.tool
+curl -s http://localhost:9093/api/v2/alerts | python3 -m json.tool
+```
+
+Short local restarts may only move alerts to `pending`. Alertmanager receives
+alerts only after Prometheus rules reach `firing`.
 
 Verify recovery:
 
@@ -112,9 +184,19 @@ make verify-ha
 Confirm message flow after recovery:
 
 ```sh
+make port-forward
+```
+
+Then in another terminal:
+
+```sh
 MESSAGE_COUNT=3 DELAY_SECONDS=0.2 make produce
 TIMEOUT_SECONDS=10 make consume
 ```
+
+If the original Kafka port-forward terminal was running during `make
+kill-broker`, restart it before post-recovery client tests. A port-forward
+attached to a deleted broker pod can lose its local socket.
 
 Clean up when finished:
 
@@ -130,6 +212,13 @@ make cluster-down
 - `learning-events` reports `READY=True`.
 - Producer sends all requested messages.
 - Consumer reads the produced messages.
+- Observability pods are `1/1 Running`.
+- Prometheus reports all configured targets up.
+- Grafana loads the provisioned Prometheus datasource and `Kafka Overview`
+  dashboard.
+- Alertmanager is reachable.
+- During broker deletion, Prometheus records Kafka health degradation
+  (`Active Brokers` may drop and under-replicated partitions may rise).
 - `make verify-ha` reports `PASS`.
 - Producer and consumer still work after one broker pod is deleted and restored.
 
@@ -144,4 +233,8 @@ kubectl get kafka kafka-cluster -n kafka-lab -o yaml
 kubectl get kafkatopic learning-events -n kafka-lab -o yaml
 kubectl get events -n kafka-lab --sort-by=.lastTimestamp
 kubectl logs -n kafka-lab deploy/strimzi-cluster-operator --tail=200
+make observability-status
+curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool
+curl -s http://localhost:9090/api/v1/alerts | python3 -m json.tool
+curl -s http://localhost:9093/api/v2/alerts | python3 -m json.tool
 ```

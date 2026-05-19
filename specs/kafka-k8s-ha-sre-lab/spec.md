@@ -101,7 +101,7 @@ The project must include a working local observability layer comprising Promethe
 **Phase 4 Observability implementation requirements:**
 
 - Prometheus must scrape Kafka broker JMX metrics (port 9404) using Kubernetes pod discovery.
-- Prometheus must scrape Kafka Exporter metrics (port 9308) for consumer lag.
+- Prometheus must scrape Kafka Exporter metrics (port 9404) for consumer lag.
 - Prometheus must scrape the Strimzi Cluster Operator metrics (port 8080).
 - Prometheus must load and evaluate Kafka alert rules.
 - Prometheus must route firing alerts to Alertmanager.

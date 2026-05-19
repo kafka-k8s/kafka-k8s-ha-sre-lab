@@ -389,6 +389,13 @@ For Kafka Exporter:
 - Confirm `spec.kafkaExporter` is set in the Kafka CR.
 - Strimzi creates the exporter deployment after the cluster is `READY=True`.
 - Check exporter logs: `kubectl logs -n kafka-lab deploy/kafka-cluster-kafka-exporter`.
+- In this Strimzi-managed deployment, Kafka Exporter exposes metrics on port
+  9404 (`tcp-prometheus`). If Prometheus targets show `kafka-exporter` down on
+  port 9308, apply the corrected Prometheus config and restart Prometheus:
+  ```sh
+  kubectl apply -n kafka-lab -f observability/prometheus/prometheus-config.yaml
+  kubectl rollout restart deployment/prometheus -n kafka-lab
+  ```
 
 For Strimzi operator:
 - Confirm the operator pod is `1/1 Running`.
@@ -502,6 +509,66 @@ Common fixes:
 - After the Kafka CR is updated, Strimzi may restart broker pods one at a time.
   Monitor with: `kubectl get pods -n kafka-lab -w`
 
+### Kafka Deploy Fails Because Metrics Config Is Missing
+
+Symptoms:
+
+- `make deploy-kafka` applies the Kafka CR, but Kafka never becomes Ready.
+- `kubectl describe kafka kafka-cluster -n kafka-lab` shows:
+
+  ```text
+  ConfigMap kafka-metrics-config does not exist
+  ```
+
+Cause:
+
+- The Kafka CR references `spec.kafka.metricsConfig`, so the
+  `kafka-metrics-config` ConfigMap must exist before Strimzi reconciles Kafka.
+
+Fix:
+
+```sh
+make deploy-kafka
+```
+
+The `deploy-kafka` target applies `manifests/kafka/kafka-metrics-config.yaml`
+before `manifests/kafka/kafka-cluster.yaml`.
+
+If you are debugging an older checkout manually:
+
+```sh
+kubectl apply -n kafka-lab -f manifests/kafka/kafka-metrics-config.yaml
+kubectl apply -n kafka-lab -f manifests/kafka/kafka-cluster.yaml
+```
+
+### Kafka Port-Forward Lost After Broker Deletion
+
+Symptoms:
+
+- `make produce` fails after `make kill-broker` with `NoBrokersAvailable`.
+- The `make port-forward` terminal shows `lost connection to pod`.
+
+Cause:
+
+- Local `kubectl port-forward` attaches to selected pods behind the services.
+  Deleting a broker can invalidate one of those forwarding streams.
+
+Fix:
+
+1. Stop the stale `make port-forward` terminal.
+2. Start it again:
+
+   ```sh
+   make port-forward
+   ```
+
+3. Re-run producer and consumer:
+
+   ```sh
+   make produce
+   make consume
+   ```
+
 ### Port-Forward Conflict
 
 Symptoms:
@@ -549,6 +616,32 @@ Common causes and fixes:
 5. **Consumer lag panel empty**: The consumer lag panel requires Kafka Exporter
    (`kafkaExporter` in Kafka CR) and a consumer group to have committed offsets.
    Run `make produce` and `make consume` first.
+
+### Grafana Restarts During First Startup
+
+Symptoms:
+
+- Grafana eventually becomes Ready, but the pod has one or more restarts.
+- Events show liveness probe failures while Grafana is still starting:
+
+  ```text
+  Liveness probe failed: Get "http://<pod-ip>:3000/api/health": connect: connection refused
+  ```
+
+Cause:
+
+- On slower local Docker Desktop or WSL environments, Grafana startup and SQLite
+  migrations can take longer than a short liveness delay.
+
+Fix:
+
+- Use the manifest with the Grafana `startupProbe` and longer readiness/liveness
+  timeouts:
+
+  ```sh
+  kubectl apply -n kafka-lab -f observability/grafana/grafana-deployment.yaml
+  kubectl rollout status deployment/grafana -n kafka-lab --timeout=600s
+  ```
 
 ### Observability Pods Not Starting
 

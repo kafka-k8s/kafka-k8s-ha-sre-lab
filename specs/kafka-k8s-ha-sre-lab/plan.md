@@ -177,7 +177,7 @@ scripts/validate-observability.sh            Validation script
 | Job              | Discovery              | Port | Label filter                                   |
 |------------------|------------------------|------|------------------------------------------------|
 | kafka-brokers    | pod role, kafka-lab ns | 9404 | strimzi.io/broker-role=true                    |
-| kafka-exporter   | pod role, kafka-lab ns | 9308 | strimzi.io/name=kafka-cluster-kafka-exporter   |
+| kafka-exporter   | pod role, kafka-lab ns | 9404 | strimzi.io/name=kafka-cluster-kafka-exporter   |
 | strimzi-operator | pod role, kafka-lab ns | 8080 | name=strimzi-cluster-operator                  |
 | prometheus       | static localhost       | 9090 | n/a                                            |
 

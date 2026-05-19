@@ -13,7 +13,7 @@
 #
 #   kafka-exporter  Kafka Exporter pod deployed by Strimzi when kafkaExporter
 #                   is set in the Kafka CR. Exposes consumer group lag and
-#                   topic partition metrics on port 9308.
+#                   topic partition metrics on port 9404.
 #                   Filtered by strimzi.io/name=kafka-cluster-kafka-exporter.
 #
 #   strimzi-operator
@@ -100,7 +100,7 @@ data:
             target_label: namespace
 
       # -----------------------------------------------------------------------
-      # Kafka Exporter metrics (consumer group lag on port 9308).
+      # Kafka Exporter metrics (consumer group lag on port 9404).
       #
       # Strimzi creates a Deployment named kafka-cluster-kafka-exporter when
       # kafkaExporter is set in the Kafka CR. The pod label
@@ -120,7 +120,7 @@ data:
           - source_labels: [__meta_kubernetes_pod_ip]
             regex: (.+)
             target_label: __address__
-            replacement: "$1:9308"
+            replacement: "$1:9404"
           - source_labels: [__meta_kubernetes_pod_name]
             target_label: pod
           - source_labels: [__meta_kubernetes_namespace]

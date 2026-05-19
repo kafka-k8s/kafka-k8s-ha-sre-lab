@@ -316,7 +316,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"strimzi-operator\"} or vector(0)",
+          "expr": "max(up{job=\"strimzi-operator\"}) or on() vector(0)",
           "instant": true,
           "legendFormat": "Strimzi Operator",
           "refId": "A"

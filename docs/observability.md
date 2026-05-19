@@ -15,7 +15,7 @@ No cloud service, managed monitoring platform, or Prometheus Operator is needed.
 
 ```
 Kafka Brokers (port 9404)    ──┐
-Kafka Exporter (port 9308)   ──┼──→ Prometheus (port 9090) ──→ Alertmanager (port 9093)
+Kafka Exporter (port 9404)   ──┼──→ Prometheus (port 9090) ──→ Alertmanager (port 9093)
 Strimzi Operator (port 8080) ──┘           │
                                            ↓
                                      Grafana (port 3000)
@@ -72,8 +72,8 @@ Key metrics categories captured:
 ### Kafka Exporter
 
 Strimzi deploys a Kafka Exporter pod when `spec.kafkaExporter` is set in the
-Kafka CR. The Exporter exposes consumer group lag and topic partition metrics
-on port 9308.
+Kafka CR. In this Strimzi-managed deployment, the Exporter exposes consumer
+group lag and topic partition metrics on the `tcp-prometheus` port 9404.
 
 Key metrics from Kafka Exporter:
 
@@ -98,7 +98,7 @@ dynamically. No static pod IPs are hardcoded.
 | Job              | Port | Label filter                                         |
 |------------------|------|------------------------------------------------------|
 | kafka-brokers    | 9404 | `strimzi.io/broker-role=true`                        |
-| kafka-exporter   | 9308 | `strimzi.io/name=kafka-cluster-kafka-exporter`       |
+| kafka-exporter   | 9404 | `strimzi.io/name=kafka-cluster-kafka-exporter`       |
 | strimzi-operator | 8080 | `name=strimzi-cluster-operator`                      |
 | prometheus       | 9090 | static self-scrape                                   |
 
@@ -156,7 +156,7 @@ Dashboard panels:
 | Active Brokers              | `count(up{job="kafka-brokers"} == 1)`                                    | Stat        |
 | Under-Replicated Partitions | `sum(kafka_server_replicamanager_underreplicatedpartitions)`             | Stat        |
 | Offline Partitions          | `sum(kafka_controller_kafkacontroller_offlinepartitionscount)`           | Stat        |
-| Strimzi Operator            | `up{job="strimzi-operator"}`                                             | Stat        |
+| Strimzi Operator            | `max(up{job="strimzi-operator"}) or on() vector(0)`                      | Stat        |
 | Messages In/sec             | `sum(rate(kafka_server_brokertopicmetrics_messagesinpersec_total[5m]))` | Time series |
 | Consumer Lag                | `sum by (consumergroup) (kafka_consumergroup_lag{topic="learning-events"})` | Time series |
 | ISR Shrink/Expand Rate      | `rate(isrshrinkspersec_total[5m])` + `rate(isrexpandspersec_total[5m])` | Time series |
