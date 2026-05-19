@@ -22,7 +22,7 @@ jobs:
       # -----------------------------------------------------------------------
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ubuntu-latest ships with Docker but not Kind.
       # Pin Kind to match the kindest/node:v1.31.1 image used in kind-cluster.yaml.
@@ -81,7 +81,7 @@ jobs:
       # -----------------------------------------------------------------------
 
       - name: "Phase 3 | Cache pip packages"
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: pip-${{ hashFiles('apps/requirements.txt') }}
@@ -159,6 +159,19 @@ jobs:
       - name: "Phase 5 | Verify HA recovery (3 min max)"
         run: make verify-ha
 
+      # The broker pod killed above caused the running port-forward to lose its
+      # connection. Restart it so the post-recovery producer can reach Kafka.
+      - name: "Phase 5 | Restart Kafka port-forward (post-recovery)"
+        run: |
+          kill "$PF_KAFKA_PID" 2>/dev/null || true
+          nohup make port-forward > /tmp/pf-kafka.log 2>&1 &
+          echo "PF_KAFKA_PID=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 15); do
+            nc -z localhost 9092 2>/dev/null && echo "Kafka port-forward ready (${i}s)" && break
+            sleep 2
+          done
+          nc -z localhost 9092 || { echo "ERROR: Kafka bootstrap port-forward did not become ready"; cat /tmp/pf-kafka.log; exit 1; }
+
       - name: "Phase 5 | Produce messages (post-recovery)"
         run: make produce
 
@@ -195,7 +208,7 @@ jobs:
 
       - name: Upload diagnostics artifact
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: e2e-ha-diagnostics
           path: |
