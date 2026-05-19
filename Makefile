@@ -1,30 +1,63 @@
-CLUSTER_NAME ?= kafka-k8s-ha-sre-lab
-KIND_CONFIG ?= kind/kind-cluster.yaml
-NAMESPACE ?= kafka-lab
-STRIMZI_MANIFESTS := $(wildcard manifests/strimzi/*.yaml manifests/strimzi/*.yml)
-KAFKA_MANIFESTS := $(wildcard manifests/kafka/*.yaml manifests/kafka/*.yml)
-TOPIC_MANIFESTS := $(wildcard manifests/topics/*.yaml manifests/topics/*.yml)
-PRODUCER_APP := $(wildcard apps/producer.py)
-CONSUMER_APP := $(wildcard apps/consumer.py)
-KILL_BROKER_SCRIPT := $(wildcard scripts/kill-broker.sh)
-VERIFY_HA_SCRIPT := $(wildcard scripts/verify-ha.sh)
+# kafka-k8s-ha-sre-lab Makefile
+# Primary path:     Kind + Docker
+# Alternative path: Kind + Podman
+# See README.md for the full quick start.
 
-.PHONY: help cluster-up-docker cluster-up-podman cluster-down nodes status install-strimzi deploy-kafka create-topic produce consume kill-broker verify-ha
+CLUSTER_NAME    ?= kafka-k8s-ha-sre-lab
+KIND_CONFIG     ?= kind/kind-cluster.yaml
+NAMESPACE       ?= kafka-lab
+
+# Kafka bootstrap address used by the producer and consumer.
+# Port-forward must be running when using the default localhost address.
+BOOTSTRAP       ?= localhost:9092
+TOPIC           ?= learning-events
+CONSUMER_GROUP  ?= sre-lab-consumers
+
+# Strimzi version to install. Override to pin a different release.
+# Check supported releases: https://strimzi.io/downloads/
+STRIMZI_VERSION ?= 0.43.0
+
+.PHONY: help \
+	cluster-up-docker cluster-up-podman cluster-down nodes \
+	install-strimzi deploy-kafka create-topic status port-forward \
+	produce consume kill-broker verify-ha clean
 
 help:
-	@echo "Targets:"
-	@echo "  cluster-up-docker  Create the Kind cluster using Docker"
-	@echo "  cluster-up-podman  Create the Kind cluster using Podman"
-	@echo "  cluster-down       Delete the Kind cluster"
-	@echo "  nodes              Show Kubernetes nodes"
-	@echo "  status             Show cluster pods"
-	@echo "  install-strimzi    Apply Strimzi manifests when added"
-	@echo "  deploy-kafka       Apply Kafka manifests when added"
-	@echo "  create-topic       Apply topic manifests when added"
-	@echo "  produce            Run Python producer when implemented"
-	@echo "  consume            Run Python consumer when implemented"
-	@echo "  kill-broker        Run broker failure script when implemented"
-	@echo "  verify-ha          Run HA verification script when implemented"
+	@echo ""
+	@echo "kafka-k8s-ha-sre-lab"
+	@echo ""
+	@echo "Cluster:"
+	@echo "  make cluster-up-docker    Create Kind cluster with Docker (primary path)"
+	@echo "  make cluster-up-podman    Create Kind cluster with Podman (alternative)"
+	@echo "  make cluster-down         Delete the Kind cluster"
+	@echo "  make nodes                Show Kubernetes nodes"
+	@echo ""
+	@echo "Strimzi and Kafka:"
+	@echo "  make install-strimzi      Install Strimzi operator"
+	@echo "  make deploy-kafka         Deploy Kafka KRaft cluster"
+	@echo "  make create-topic         Create the learning-events topic"
+	@echo "  make status               Show cluster, Kafka, and topic status"
+	@echo ""
+	@echo "Producer and consumer:"
+	@echo "  make port-forward         Port-forward Kafka bootstrap to localhost:9092"
+	@echo "  make produce              Run Python producer (requires port-forward)"
+	@echo "  make consume              Run Python consumer (requires port-forward)"
+	@echo ""
+	@echo "Failure testing:"
+	@echo "  make kill-broker          Delete one Kafka broker pod"
+	@echo "  make verify-ha            Wait for all broker pods to recover"
+	@echo ""
+	@echo "  make clean                Delete the Kind cluster"
+	@echo ""
+	@echo "Overrides:"
+	@echo "  STRIMZI_VERSION=0.44.0 make install-strimzi"
+	@echo "  MESSAGE_COUNT=50 make produce"
+	@echo "  TIMEOUT_SECONDS=60 make consume"
+	@echo ""
+
+# ---------------------------------------------------------------------------
+# Cluster lifecycle
+# ---------------------------------------------------------------------------
 
 cluster-up-docker:
 	kind create cluster --name $(CLUSTER_NAME) --config $(KIND_CONFIG)
@@ -38,56 +71,69 @@ cluster-down:
 nodes:
 	kubectl get nodes -o wide
 
-status:
-	kubectl get pods -A -o wide
+# ---------------------------------------------------------------------------
+# Strimzi and Kafka
+# ---------------------------------------------------------------------------
 
 install-strimzi:
-	@echo "Applying namespace manifest."
-	kubectl apply -f manifests/namespace.yaml
-ifneq ($(strip $(STRIMZI_MANIFESTS)),)
-	kubectl apply -n $(NAMESPACE) -f manifests/strimzi/
-else
-	@echo "Strimzi manifests are not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P3-002."
-endif
+	STRIMZI_VERSION=$(STRIMZI_VERSION) NAMESPACE=$(NAMESPACE) bash scripts/install-strimzi.sh
 
 deploy-kafka:
-ifneq ($(strip $(KAFKA_MANIFESTS)),)
-	kubectl apply -n $(NAMESPACE) -f manifests/kafka/
-else
-	@echo "Kafka manifests are not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P3-003."
-endif
+	kubectl apply -n $(NAMESPACE) -f manifests/kafka/kafka-cluster.yaml
+	@echo ""
+	@echo "Kafka resources applied. Strimzi will provision the cluster."
+	@echo "Allow 2-5 minutes for broker pods to reach Running state."
+	@echo "Monitor with: make status"
 
 create-topic:
-ifneq ($(strip $(TOPIC_MANIFESTS)),)
-	kubectl apply -n $(NAMESPACE) -f manifests/topics/
-else
-	@echo "Topic manifests are not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P3-004."
-endif
+	kubectl apply -n $(NAMESPACE) -f manifests/topics/learning-events.yaml
+
+status:
+	@echo "=== Nodes ==="
+	@kubectl get nodes -o wide
+	@echo ""
+	@echo "=== Pods in $(NAMESPACE) ==="
+	@kubectl get pods -n $(NAMESPACE) -o wide 2>/dev/null || echo "Namespace not found."
+	@echo ""
+	@echo "=== Kafka cluster ==="
+	@kubectl get kafka -n $(NAMESPACE) 2>/dev/null || echo "No Kafka resources found."
+	@echo ""
+	@echo "=== KafkaNodePools ==="
+	@kubectl get kafkanodepool -n $(NAMESPACE) 2>/dev/null || echo "No KafkaNodePool resources found."
+	@echo ""
+	@echo "=== Topics ==="
+	@kubectl get kafkatopic -n $(NAMESPACE) 2>/dev/null || echo "No topic resources found."
+
+# ---------------------------------------------------------------------------
+# Producer and consumer
+# Port-forward must be running in a separate terminal before using these.
+# ---------------------------------------------------------------------------
+
+port-forward:
+	@echo "Forwarding svc/kafka-cluster-kafka-bootstrap -> localhost:9092"
+	@echo "Press Ctrl+C to stop."
+	kubectl -n $(NAMESPACE) port-forward svc/kafka-cluster-kafka-bootstrap 9092:9092
 
 produce:
-ifneq ($(strip $(PRODUCER_APP)),)
-	python apps/producer.py
-else
-	@echo "apps/producer.py is not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P4-001."
-endif
+	BOOTSTRAP_SERVERS=$(BOOTSTRAP) TOPIC=$(TOPIC) python apps/producer.py
 
 consume:
-ifneq ($(strip $(CONSUMER_APP)),)
-	python apps/consumer.py
-else
-	@echo "apps/consumer.py is not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P4-002."
-endif
+	BOOTSTRAP_SERVERS=$(BOOTSTRAP) TOPIC=$(TOPIC) CONSUMER_GROUP=$(CONSUMER_GROUP) python apps/consumer.py
+
+# ---------------------------------------------------------------------------
+# Failure testing
+# ---------------------------------------------------------------------------
 
 kill-broker:
-ifneq ($(strip $(KILL_BROKER_SCRIPT)),)
-	sh scripts/kill-broker.sh
-else
-	@echo "scripts/kill-broker.sh is not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P6-001."
-endif
+	NAMESPACE=$(NAMESPACE) bash scripts/kill-broker.sh
 
 verify-ha:
-ifneq ($(strip $(VERIFY_HA_SCRIPT)),)
-	sh scripts/verify-ha.sh
-else
-	@echo "scripts/verify-ha.sh is not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P6-003."
-endif
+	NAMESPACE=$(NAMESPACE) bash scripts/verify-ha.sh
+
+# ---------------------------------------------------------------------------
+# Cleanup
+# ---------------------------------------------------------------------------
+
+clean:
+	kind delete cluster --name $(CLUSTER_NAME)
+

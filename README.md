@@ -31,68 +31,129 @@ See [docs/architecture.md](docs/architecture.md) for diagrams and component deta
 
 ## Quick Start: Kind + Docker
 
-Current status: this first pass provides documentation, project structure, a Kind cluster config, and safe Makefile targets. Kafka manifests, observability configs, Python apps, and failure scripts are planned in the task breakdown.
-
 Prerequisites:
 
 - Docker running locally.
-- `kind` installed.
+- [`kind`](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) installed.
 - `kubectl` installed.
 - `make` installed.
+- Python 3.11+ for the producer and consumer.
 
-Clone and create the local cluster:
+Recommended local resources: 4 CPU cores, 8 GB RAM, 20 GB free disk.
+
+Clone the repository:
 
 ```sh
-git clone https://github.com/kafka-k8s/kafka-k8s-ha-sre-lab.git
+git clone https://github.com/Hatef-Rostamkhani/kafka-k8s-ha-sre-lab.git
 cd kafka-k8s-ha-sre-lab
 ```
 
-Then run:
+**Step 1: Create the Kind cluster**
 
 ```sh
 make cluster-up-docker
 make nodes
+```
+
+**Step 2: Install Strimzi operator**
+
+```sh
+make install-strimzi
+```
+
+This downloads and installs Strimzi 0.43.0 into the `kafka-lab` namespace. Allow 2-3 minutes for the operator pod to become ready.
+
+**Step 3: Deploy Kafka in KRaft mode**
+
+```sh
+make deploy-kafka
+```
+
+Three broker pods will start. Monitor until all are Running:
+
+```sh
 make status
 ```
 
-Delete the local cluster:
+Allow 2-5 minutes. All three `kafka-cluster-combined-*` pods must show `1/1 Running`.
+
+**Step 4: Create the learning-events topic**
+
+```sh
+make create-topic
+```
+
+**Step 5: Run the producer**
+
+Open a terminal and start the port-forward:
+
+```sh
+make port-forward
+```
+
+Open a second terminal and install the Python dependency, then send events:
+
+```sh
+pip install -r apps/requirements.txt
+make produce
+```
+
+**Step 6: Run the consumer**
+
+Open a third terminal:
+
+```sh
+make consume
+```
+
+The consumer reads from the beginning of the topic and exits after 30 seconds of inactivity.
+
+**Step 7: Simulate a broker failure**
+
+```sh
+make kill-broker
+```
+
+Watch recovery:
+
+```sh
+make verify-ha
+```
+
+Delete the local cluster when done:
 
 ```sh
 make cluster-down
 ```
 
-Later implementation phases will enable:
-
-```sh
-make install-strimzi
-make deploy-kafka
-make create-topic
-make produce
-make consume
-make kill-broker
-make verify-ha
-```
-
 ## Quick Start: Kind + Podman
 
-Podman is supported as an alternative local runtime. Docker remains the primary path because it is the most common Kind setup.
+Podman is an alternative runtime. Docker is the primary path because it has broader Kind compatibility across operating systems.
 
 Prerequisites:
 
-- Podman running locally.
-- `kind` installed with Podman provider support.
+- Podman running locally (Podman Desktop or `podman machine start` on macOS/Windows).
+- `kind` installed.
 - `kubectl` installed.
 - `make` installed.
 
-Create the local cluster:
+Create the cluster:
 
 ```sh
 make cluster-up-podman
 make nodes
-make status
 ```
 
-If Kind cannot connect to Podman, confirm your Podman machine or service is running before retrying.
+All subsequent steps (`make install-strimzi`, `make deploy-kafka`, etc.) are identical to the Docker path.
+
+If Kind cannot connect to Podman, check:
+
+```sh
+podman info
+podman ps
+```
+
+See [docs/troubleshooting.md](docs/troubleshooting.md) for common Podman issues.
 
 ## Optional Minikube Note
 
@@ -175,9 +236,12 @@ Sample event:
 
 ## Roadmap
 
-- Phase 1: Documentation and repository scaffold.
-- Phase 2: Kind cluster and local setup validation.
-- Phase 3: Strimzi and Kafka KRaft manifests.
+- Phase 1: Documentation and repository scaffold. ✓
+- Phase 2: Kind cluster and local setup. ✓
+- Phase 3: Strimzi, Kafka KRaft, producer, consumer, failure scripts. ✓
+- Phase 4: Prometheus, Grafana, Alertmanager implementation.
+- Phase 5: MirrorMaker 2, k3s/kubeadm variants, GitOps.
+- Phase 6: Load testing, upgrade testing, backup automation.
 - Phase 4: Python producer and consumer.
 - Phase 5: Prometheus, Grafana, and Alertmanager assets.
 - Phase 6: Failure simulation scripts.

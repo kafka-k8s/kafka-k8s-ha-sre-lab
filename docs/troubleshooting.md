@@ -146,13 +146,36 @@ Common fixes:
 - Confirm KRaft settings match the installed Strimzi version.
 - Confirm resource requests fit the local machine.
 
-## Producer Cannot Connect
+## KafkaTopic Not Created
 
 Symptoms:
 
-- Producer times out.
-- Bootstrap server cannot be resolved.
-- Authentication fails.
+- `kubectl get kafkatopic -n kafka-lab` shows no resources or `NotReady`.
+- Producer gets a `TopicAuthorizationException` or `UnknownTopicOrPartitionException`.
+
+Checks:
+
+```sh
+kubectl get kafkatopic -n kafka-lab
+kubectl describe kafkatopic learning-events -n kafka-lab
+kubectl get pods -n kafka-lab | grep entity-operator
+kubectl logs -n kafka-lab deploy/kafka-cluster-entity-operator -c topic-operator
+```
+
+Common fixes:
+
+- The Entity Operator is responsible for creating topics. Confirm it is running.
+- The Entity Operator is part of the Kafka CR deployment and starts after the brokers are ready.
+- Wait until `kubectl get kafka -n kafka-lab` shows `READY=True` before applying topic manifests.
+- Check that the `strimzi.io/cluster: kafka-cluster` label on the KafkaTopic matches the Kafka CR name.
+
+## Port-Forward Fails or Drops
+
+Symptoms:
+
+- `make port-forward` exits immediately.
+- Producer or consumer gets `Connection refused` on `localhost:9092`.
+- Port-forward works briefly then disconnects.
 
 Checks:
 
@@ -163,11 +186,56 @@ kubectl get pods -n kafka-lab
 
 Common fixes:
 
-- Confirm the bootstrap service name and port.
-- Use port-forwarding for local host-based producer tests if needed.
-- Confirm Kafka listener configuration.
-- Confirm producer credentials if SASL/SCRAM is enabled.
-- Confirm topic exists.
+- Confirm the bootstrap service exists: `kubectl get svc kafka-cluster-kafka-bootstrap -n kafka-lab`.
+- Confirm all broker pods are running before starting port-forward.
+- Port-forward needs a running pod behind the service. If brokers are starting, wait.
+- If port-forward drops during a test, restart it: `make port-forward`.
+- Port-forward is not suitable for high-throughput production testing; it is fine for local lab use.
+
+## Producer Cannot Connect
+
+Symptoms:
+
+- Producer prints `[ERROR] Cannot connect to Kafka`.
+- `NoBrokersAvailable` error from kafka-python.
+- Producer hangs on startup.
+
+Checks:
+
+```sh
+# Is port-forward running in another terminal?
+# Is the bootstrap service healthy?
+kubectl get svc -n kafka-lab
+kubectl get pods -n kafka-lab
+```
+
+Common fixes:
+
+- Start port-forward first: `make port-forward` in a separate terminal.
+- Confirm broker pods are in `1/1 Running` state before running the producer.
+- Confirm `BOOTSTRAP_SERVERS` is set to `localhost:9092` (the default).
+- If the producer times out immediately, check that the port-forward terminal is still active.
+
+## Consumer Receives No Messages
+
+Symptoms:
+
+- Consumer starts and exits after the timeout with `Consumed 0 messages`.
+- No error messages.
+
+Checks:
+
+```sh
+kubectl get kafkatopic -n kafka-lab
+```
+
+Common fixes:
+
+- Confirm the `learning-events` topic was created: `make create-topic`.
+- Run the producer first to send messages: `make produce`.
+- If the consumer group already committed offsets past all current messages, reset the group or
+  use a new `CONSUMER_GROUP` name to start from the beginning.
+- Increase `TIMEOUT_SECONDS` if the producer is slow: `TIMEOUT_SECONDS=60 make consume`.
 
 ## Grafana Not Accessible
 

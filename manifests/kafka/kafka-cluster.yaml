@@ -1,0 +1,90 @@
+# KafkaNodePool: combined controller and broker roles.
+# Three replicas handle both KRaft controller and broker responsibilities.
+# This combined topology is appropriate for a local lab where minimizing
+# resource usage matters more than controller/broker isolation.
+#
+# Local lab storage: 5Gi per pod = 15Gi total.
+# Resource requests are deliberately modest for a developer workstation.
+# Do not use these resource values in production.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: combined
+  namespace: kafka-lab
+  labels:
+    strimzi.io/cluster: kafka-cluster
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: persistent-claim
+    size: 5Gi
+    # deleteClaim: true removes the PVCs when the KafkaNodePool is deleted.
+    # Set to false if you want to preserve data between cluster restarts.
+    deleteClaim: true
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+---
+# Kafka cluster in KRaft mode, managed by Strimzi.
+#
+# KRaft mode eliminates the ZooKeeper dependency introduced in older Kafka versions.
+# The two annotations below opt this cluster into KafkaNodePool and KRaft support.
+#
+# Replication settings:
+#   replication.factor=3       One copy of each partition per broker.
+#   min.insync.replicas=2      At least 2 replicas must acknowledge a write for
+#                              the producer's acks=all to succeed. This means the
+#                              cluster can tolerate one broker being unavailable
+#                              without losing writes.
+#
+# Local limitation: all three "brokers" run on one workstation. This demonstrates
+# Kubernetes pod recovery and Kafka leader election, but does not provide true
+# physical fault isolation. Losing the host machine loses all data.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: kafka-cluster
+  namespace: kafka-lab
+  annotations:
+    # Enable KafkaNodePool support. Replicas and storage come from the pool above.
+    strimzi.io/node-pools: enabled
+    # Enable KRaft mode. No ZooKeeper is deployed.
+    strimzi.io/kraft: enabled
+spec:
+  kafka:
+    version: 3.7.1
+    # metadataVersion controls the KRaft metadata format.
+    # Must be <= the Kafka version. Increment only after all brokers are upgraded.
+    metadataVersion: "3.7-IV4"
+    listeners:
+      # Internal plain listener for in-cluster clients (producer, consumer, topic operator).
+      # TLS is intentionally disabled for local lab simplicity.
+      # Enable TLS with a KafkaUser for production-like security testing.
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+    config:
+      # Replicate internal topics across all three brokers.
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      # Default replication for new topics.
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      # Retain messages for 24 hours to save disk on a local machine.
+      log.retention.hours: 24
+      # Smaller log segments to speed up local log compaction.
+      log.segment.bytes: 107374182
+  # Entity Operator manages KafkaTopic and KafkaUser custom resources.
+  # It must be present for 'kubectl apply -f manifests/topics/' to work.
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

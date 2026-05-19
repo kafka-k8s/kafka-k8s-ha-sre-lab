@@ -1,0 +1,23 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: learning-events
+  namespace: kafka-lab
+  labels:
+    # This label links the topic to the Kafka cluster managed by Strimzi.
+    strimzi.io/cluster: kafka-cluster
+spec:
+  # Three partitions allow parallel consumers in the same consumer group
+  # and distribute load across brokers.
+  partitions: 3
+  # Replication factor of 3 means one copy of each partition per broker.
+  replicas: 3
+  config:
+    # At least 2 replicas must be in-sync before a write is acknowledged.
+    # Combined with producer acks=all, this prevents data loss when one
+    # broker is restarting or temporarily unavailable.
+    min.insync.replicas: "2"
+    # Retain messages for 24 hours. Adjust for longer replay experiments.
+    retention.ms: "86400000"
+    # 100 MiB log segment size to limit local disk usage.
+    segment.bytes: "107374182"
