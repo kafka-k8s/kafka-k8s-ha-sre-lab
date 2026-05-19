@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kafka-lab
+  labels:
+    app.kubernetes.io/name: kafka-kubernetes-ha-sre-lab
+    app.kubernetes.io/part-of: kafka-kubernetes-ha-sre-lab
+
