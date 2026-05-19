@@ -111,7 +111,28 @@ make consume
 
 The consumer reads from the beginning of the topic and exits after 30 seconds of inactivity.
 
-**Step 7: Simulate a broker failure**
+**Step 7: Deploy observability**
+
+```sh
+make deploy-observability
+make observability-status
+```
+
+In separate terminals, access the observability UIs:
+
+```sh
+make port-forward-prometheus        # http://localhost:9090
+make port-forward-grafana           # http://localhost:3000  (admin/admin)
+make port-forward-alertmanager      # http://localhost:9093
+```
+
+Validate that all targets are up:
+
+```sh
+make validate-observability
+```
+
+**Step 8: Simulate a broker failure**
 
 ```sh
 make kill-broker
@@ -122,6 +143,9 @@ Watch recovery:
 ```sh
 make verify-ha
 ```
+
+While the broker is down, check the Prometheus Alerts page for `KafkaBrokerDown`.
+The Grafana Kafka Overview dashboard shows Active Brokers dropping from 3 to 2.
 
 Delete the local cluster when done:
 
@@ -224,19 +248,19 @@ Sample event:
 
 - [CONSTITUTION.md](CONSTITUTION.md): Engineering principles.
 - [specs/kafka-k8s-ha-sre-lab/spec.md](specs/kafka-k8s-ha-sre-lab/spec.md): Product and technical specification.
-- [specs/kafka-k8s-ha-sre-lab/plan.md](specs/kafka-k8s-ha-sre-lab/plan.md): Implementation plan.
+- [specs/kafka-k8s-ha-sre-lab/plan.md](specs/kafka-k8s-ha-sre-lab/plan.md): Implementation plan including Phase 4 observability.
 - [specs/kafka-k8s-ha-sre-lab/tasks.md](specs/kafka-k8s-ha-sre-lab/tasks.md): Step-by-step task breakdown.
 - [docs/architecture.md](docs/architecture.md): Architecture diagrams and component flow.
 - [docs/ha-design.md](docs/ha-design.md): Kafka HA design notes.
 - [docs/kubernetes-vs-vm.md](docs/kubernetes-vs-vm.md): Kubernetes versus VM/bare metal trade-offs.
-- [docs/local-testing.md](docs/local-testing.md): Local runtime guide.
+- [docs/local-testing.md](docs/local-testing.md): Local runtime guide including observability flow.
 - [docs/e2e-validation.md](docs/e2e-validation.md): Exact local MVP validation commands.
 - [docs/demo-output.md](docs/demo-output.md): Captured output from the local MVP validation run.
 - [docs/disaster-recovery.md](docs/disaster-recovery.md): DR boundaries and future design.
-- [docs/observability.md](docs/observability.md): Metrics, dashboards, and alerts.
+- [docs/observability.md](docs/observability.md): Prometheus, Grafana, Alertmanager implementation and validation.
 - [docs/security.md](docs/security.md): Local security and hardening plan.
-- [docs/incident-runbook.md](docs/incident-runbook.md): Operational runbooks.
-- [docs/troubleshooting.md](docs/troubleshooting.md): Common local issues.
+- [docs/incident-runbook.md](docs/incident-runbook.md): Operational runbooks including alert mappings.
+- [docs/troubleshooting.md](docs/troubleshooting.md): Common local issues including observability troubleshooting.
 - [docs/production-checklist.md](docs/production-checklist.md): Production readiness checklist.
 
 ## Roadmap
@@ -244,14 +268,10 @@ Sample event:
 - Phase 1: Documentation and repository scaffold. ✓
 - Phase 2: Kind cluster and local setup. ✓
 - Phase 3: Strimzi, Kafka KRaft, producer, consumer, failure scripts. ✓
-- Phase 4: Prometheus, Grafana, Alertmanager implementation.
-- Phase 5: MirrorMaker 2, k3s/kubeadm variants, GitOps.
-- Phase 6: Load testing, upgrade testing, backup automation.
-- Phase 4: Python producer and consumer.
-- Phase 5: Prometheus, Grafana, and Alertmanager assets.
-- Phase 6: Failure simulation scripts.
-- Phase 7: Documentation polish and consistency checks.
-- Phase 8: End-to-end local validation.
+- Phase 4: Prometheus, Grafana, Alertmanager implementation. ✓
+- Phase 5: Security baseline — SASL/SCRAM, ACLs, NetworkPolicy.
+- Phase 6: MirrorMaker 2, k3s/kubeadm variants, GitOps.
+- Phase 7: Load testing, upgrade testing, backup automation.
 
 ## Resume Bullet Example
 
