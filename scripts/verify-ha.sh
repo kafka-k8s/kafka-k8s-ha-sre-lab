@@ -9,6 +9,7 @@
 # Environment variables:
 #   NAMESPACE   Kubernetes namespace (default: kafka-lab)
 #   TIMEOUT     Seconds to wait before failing (default: 180)
+#   KUBECTL_BIN kubectl executable (default: kubectl)
 #
 # Usage:
 #   NAMESPACE=kafka-lab TIMEOUT=180 bash scripts/verify-ha.sh
@@ -17,8 +18,10 @@ set -euo pipefail
 
 NAMESPACE=${NAMESPACE:-"kafka-lab"}
 TIMEOUT=${TIMEOUT:-180}
+KUBECTL_BIN=${KUBECTL_BIN:-"kubectl"}
 EXPECTED_PODS=3
 POLL_INTERVAL=5
+BROKER_SELECTOR="strimzi.io/cluster=kafka-cluster,strimzi.io/broker-role=true"
 
 echo "=== HA Recovery Verification ==="
 echo ""
@@ -38,14 +41,14 @@ while true; do
   ELAPSED=$(( NOW - START ))
 
   # Count pods with 1/1 READY.
-  READY_COUNT=$(kubectl get pods -n "${NAMESPACE}" \
-    -l "strimzi.io/cluster=kafka-cluster" \
+  READY_COUNT=$("${KUBECTL_BIN}" get pods -n "${NAMESPACE}" \
+    -l "${BROKER_SELECTOR}" \
     --no-headers 2>/dev/null \
     | awk '{print $2}' \
     | grep -c "^1/1$" || true)
 
-  TOTAL_COUNT=$(kubectl get pods -n "${NAMESPACE}" \
-    -l "strimzi.io/cluster=kafka-cluster" \
+  TOTAL_COUNT=$("${KUBECTL_BIN}" get pods -n "${NAMESPACE}" \
+    -l "${BROKER_SELECTOR}" \
     --no-headers 2>/dev/null \
     | wc -l | tr -d ' ' || echo "0")
 
@@ -55,7 +58,7 @@ while true; do
     echo ""
     echo "PASS: All ${EXPECTED_PODS} Kafka pods are Ready. Elapsed: ${ELAPSED}s."
     echo ""
-    kubectl get pods -n "${NAMESPACE}" -o wide
+    "${KUBECTL_BIN}" get pods -n "${NAMESPACE}" -o wide
     echo ""
     echo "The cluster recovered from the simulated broker failure."
     echo "To continue testing, run the producer and consumer:"
@@ -69,11 +72,11 @@ while true; do
     echo ""
     echo "FAIL: Timeout after ${ELAPSED}s. Not all pods recovered."
     echo ""
-    kubectl get pods -n "${NAMESPACE}" -o wide
+    "${KUBECTL_BIN}" get pods -n "${NAMESPACE}" -o wide
     echo ""
     echo "Check pod events:"
-    echo "  kubectl describe pod -n ${NAMESPACE} <pod-name>"
-    echo "  kubectl get events -n ${NAMESPACE} --sort-by=.lastTimestamp"
+    echo "  ${KUBECTL_BIN} describe pod -n ${NAMESPACE} <pod-name>"
+    echo "  ${KUBECTL_BIN} get events -n ${NAMESPACE} --sort-by=.lastTimestamp"
     exit 1
   fi
 

@@ -31,6 +31,44 @@ Common fixes:
 - Free local CPU, RAM, or disk.
 - Upgrade Kind if the local version is very old.
 
+### WSL command shims
+
+Symptoms:
+
+- `make cluster-up-docker` prints `kind: Permission denied` or cannot find `kind`.
+- `make nodes` prints `kubectl: Permission denied` or cannot find `kubectl`.
+- `docker version` from WSL says Docker Desktop WSL integration is not active.
+
+Checks:
+
+```sh
+command -v kind
+command -v kubectl
+command -v docker
+kind.exe version
+kubectl.exe version --client
+docker.exe version
+```
+
+Common fixes:
+
+- Install Linux `kind` and `kubectl` inside WSL, or use the Makefile binary overrides:
+
+  ```sh
+  KIND_BIN=kind.exe KUBECTL_BIN=kubectl.exe make cluster-up-docker
+  KIND_BIN=kind.exe KUBECTL_BIN=kubectl.exe make nodes
+  ```
+
+- If you create the cluster with `kind.exe` but run producer and consumer from WSL, export a kubeconfig for Linux `kubectl` before port-forwarding:
+
+  ```sh
+  kind.exe get kubeconfig --name kafka-k8s-ha-sre-lab > /tmp/kafka-lab-kind-kubeconfig
+  export KUBECONFIG=/tmp/kafka-lab-kind-kubeconfig
+  make port-forward
+  ```
+
+- Keep the port-forward and Python producer/consumer in the same OS/network context.
+
 ## Podman Provider Issues
 
 Symptoms:
@@ -122,6 +160,40 @@ Common fixes:
 - Check resource pressure.
 - Pin and document the Strimzi version during implementation.
 
+### Strimzi crashes on Kubernetes version parsing
+
+Symptoms:
+
+- `make install-strimzi` times out waiting for the Strimzi deployment.
+- `strimzi-cluster-operator` repeatedly restarts.
+- Operator logs include:
+
+  ```text
+  Unrecognized field "emulationMajor" (class io.fabric8.kubernetes.client.VersionInfo)
+  Failed to gather environment facts
+  ```
+
+Cause:
+
+- Kind `v0.30.0` defaults to Kubernetes `v1.34.0`.
+- Strimzi `0.43.0` uses a Fabric8 Kubernetes client version that does not parse the Kubernetes `v1.34.0` version payload.
+
+Fix:
+
+- Use the pinned Kind node image in `kind/kind-cluster.yaml`:
+
+  ```yaml
+  image: kindest/node:v1.31.1
+  ```
+
+- Recreate the cluster after changing the Kind node image:
+
+  ```sh
+  make cluster-down
+  make cluster-up-docker
+  make install-strimzi
+  ```
+
 ## Kafka Cluster Not Ready
 
 Symptoms:
@@ -186,11 +258,27 @@ kubectl get pods -n kafka-lab
 
 Common fixes:
 
-- Confirm the bootstrap service exists: `kubectl get svc kafka-cluster-kafka-bootstrap -n kafka-lab`.
+- Confirm the local listener services exist:
+
+  ```sh
+  kubectl get svc -n kafka-lab | grep local
+  ```
+
 - Confirm all broker pods are running before starting port-forward.
 - Port-forward needs a running pod behind the service. If brokers are starting, wait.
 - If port-forward drops during a test, restart it: `make port-forward`.
 - Port-forward is not suitable for high-throughput production testing; it is fine for local lab use.
+
+The validated local path forwards four services, not just the bootstrap service:
+
+```text
+localhost:9092   -> kafka-cluster-kafka-local-bootstrap:9094
+localhost:19092  -> kafka-cluster-combined-local-0:9094
+localhost:19093  -> kafka-cluster-combined-local-1:9094
+localhost:19094  -> kafka-cluster-combined-local-2:9094
+```
+
+A single Kafka bootstrap port-forward is not enough for local clients because Kafka returns advertised broker endpoints after the initial bootstrap connection.
 
 ## Producer Cannot Connect
 
@@ -272,4 +360,3 @@ Use this order to avoid chasing the wrong layer:
 6. Topic: `learning-events` exists.
 7. Clients: producer and consumer configuration.
 8. Observability: Prometheus scrape, Grafana panels, Alertmanager routes.
-

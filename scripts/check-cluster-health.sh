@@ -4,6 +4,7 @@
 #
 # Environment variables:
 #   NAMESPACE   Kubernetes namespace (default: kafka-lab)
+#   KUBECTL_BIN kubectl executable (default: kubectl)
 #
 # Usage:
 #   NAMESPACE=kafka-lab bash scripts/check-cluster-health.sh
@@ -11,21 +12,22 @@
 set -euo pipefail
 
 NAMESPACE=${NAMESPACE:-"kafka-lab"}
+KUBECTL_BIN=${KUBECTL_BIN:-"kubectl"}
 
 echo "=== Kubernetes Nodes ==="
-kubectl get nodes -o wide
+"${KUBECTL_BIN}" get nodes -o wide
 
 echo ""
 echo "=== Pods in ${NAMESPACE} ==="
-kubectl get pods -n "${NAMESPACE}" -o wide
+"${KUBECTL_BIN}" get pods -n "${NAMESPACE}" -o wide
 
 echo ""
 echo "=== Kafka Cluster Status ==="
-if kubectl get kafka -n "${NAMESPACE}" &>/dev/null; then
-  kubectl get kafka -n "${NAMESPACE}"
+if "${KUBECTL_BIN}" get kafka -n "${NAMESPACE}" &>/dev/null; then
+  "${KUBECTL_BIN}" get kafka -n "${NAMESPACE}"
   echo ""
   # Print the Conditions section from the Kafka CR status.
-  kubectl get kafka -n "${NAMESPACE}" -o json 2>/dev/null \
+  "${KUBECTL_BIN}" get kafka -n "${NAMESPACE}" -o json 2>/dev/null \
     | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -42,16 +44,16 @@ fi
 
 echo ""
 echo "=== KafkaNodePools ==="
-kubectl get kafkanodepool -n "${NAMESPACE}" 2>/dev/null \
+"${KUBECTL_BIN}" get kafkanodepool -n "${NAMESPACE}" 2>/dev/null \
   || echo "No KafkaNodePool resources found."
 
 echo ""
 echo "=== Topics ==="
-kubectl get kafkatopic -n "${NAMESPACE}" 2>/dev/null \
+"${KUBECTL_BIN}" get kafkatopic -n "${NAMESPACE}" 2>/dev/null \
   || echo "No KafkaTopic resources found."
 
 echo ""
 echo "=== Recent Events ==="
-kubectl get events -n "${NAMESPACE}" \
+"${KUBECTL_BIN}" get events -n "${NAMESPACE}" \
   --sort-by=.lastTimestamp 2>/dev/null \
   | tail -20

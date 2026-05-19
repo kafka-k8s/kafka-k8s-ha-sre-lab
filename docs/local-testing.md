@@ -169,7 +169,9 @@ kubectl get kafkatopic -n kafka-lab
 ## Running the Producer and Consumer
 
 The Python apps connect via `localhost:9092`. Port-forwarding bridges the local
-machine to the Kafka bootstrap service inside the cluster.
+machine to the Kafka local listener bootstrap service and to the three
+advertised broker ports. Kafka clients need the broker ports because broker
+metadata returned after bootstrap must be reachable from the local machine.
 
 Install the Python dependency once:
 
@@ -181,6 +183,15 @@ In **terminal 1**, start port-forward (leave this running):
 
 ```sh
 make port-forward
+```
+
+Expected forwarded ports:
+
+```text
+localhost:9092   -> local bootstrap
+localhost:19092  -> broker 0
+localhost:19093  -> broker 1
+localhost:19094  -> broker 2
 ```
 
 In **terminal 2**, send 10 events:
@@ -231,4 +242,3 @@ make install-strimzi
 make deploy-kafka
 make create-topic
 ```
-

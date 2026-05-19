@@ -71,6 +71,26 @@ spec:
         port: 9092
         type: internal
         tls: false
+      # Local workstation listener used by `make port-forward`.
+      # Kafka clients need direct connectivity to every advertised broker,
+      # so this listener advertises stable localhost ports for the three
+      # broker pods. The Makefile forwards these ports to the matching
+      # Strimzi per-broker ClusterIP services.
+      - name: local
+        port: 9094
+        type: cluster-ip
+        tls: false
+        configuration:
+          brokers:
+            - broker: 0
+              advertisedHost: localhost
+              advertisedPort: 19092
+            - broker: 1
+              advertisedHost: localhost
+              advertisedPort: 19093
+            - broker: 2
+              advertisedHost: localhost
+              advertisedPort: 19094
     config:
       # Replicate internal topics across all three brokers.
       offsets.topic.replication.factor: 3

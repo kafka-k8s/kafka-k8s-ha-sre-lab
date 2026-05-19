@@ -44,7 +44,7 @@ Recommended local resources: 4 CPU cores, 8 GB RAM, 20 GB free disk.
 Clone the repository:
 
 ```sh
-git clone https://github.com/Hatef-Rostamkhani/kafka-k8s-ha-sre-lab.git
+git clone https://github.com/kafka-k8s/kafka-k8s-ha-sre-lab.git
 cd kafka-k8s-ha-sre-lab
 ```
 
@@ -90,6 +90,9 @@ Open a terminal and start the port-forward:
 ```sh
 make port-forward
 ```
+
+This forwards the local Kafka bootstrap port plus the three advertised broker
+ports required by Kafka clients.
 
 Open a second terminal and install the Python dependency, then send events:
 
@@ -227,6 +230,8 @@ Sample event:
 - [docs/ha-design.md](docs/ha-design.md): Kafka HA design notes.
 - [docs/kubernetes-vs-vm.md](docs/kubernetes-vs-vm.md): Kubernetes versus VM/bare metal trade-offs.
 - [docs/local-testing.md](docs/local-testing.md): Local runtime guide.
+- [docs/e2e-validation.md](docs/e2e-validation.md): Exact local MVP validation commands.
+- [docs/demo-output.md](docs/demo-output.md): Captured output from the local MVP validation run.
 - [docs/disaster-recovery.md](docs/disaster-recovery.md): DR boundaries and future design.
 - [docs/observability.md](docs/observability.md): Metrics, dashboards, and alerts.
 - [docs/security.md](docs/security.md): Local security and hardening plan.

@@ -5,6 +5,7 @@
 #
 # Environment variables:
 #   NAMESPACE   Kubernetes namespace (default: kafka-lab)
+#   KUBECTL_BIN kubectl executable (default: kubectl)
 #
 # Usage:
 #   NAMESPACE=kafka-lab bash scripts/kill-broker.sh
@@ -12,6 +13,8 @@
 set -euo pipefail
 
 NAMESPACE=${NAMESPACE:-"kafka-lab"}
+KUBECTL_BIN=${KUBECTL_BIN:-"kubectl"}
+BROKER_SELECTOR="strimzi.io/cluster=kafka-cluster,strimzi.io/broker-role=true"
 
 echo "=== Kafka Broker Failure Simulation ==="
 echo "Namespace: ${NAMESPACE}"
@@ -19,8 +22,8 @@ echo ""
 
 # Find one running Kafka broker pod by the Strimzi cluster label.
 # KafkaNodePool pods carry the strimzi.io/cluster label.
-POD=$(kubectl get pods -n "${NAMESPACE}" \
-  -l "strimzi.io/cluster=kafka-cluster" \
+POD=$("${KUBECTL_BIN}" get pods -n "${NAMESPACE}" \
+  -l "${BROKER_SELECTOR}" \
   --field-selector=status.phase=Running \
   -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
 
@@ -28,14 +31,14 @@ if [[ -z "${POD}" ]]; then
   echo "ERROR: No running Kafka pods found in namespace '${NAMESPACE}'."
   echo ""
   echo "Check pod state with:"
-  echo "  kubectl get pods -n ${NAMESPACE}"
+  echo "  ${KUBECTL_BIN} get pods -n ${NAMESPACE}"
   exit 1
 fi
 
 echo "Target pod: ${POD}"
 echo ""
 echo "Deleting pod..."
-kubectl delete pod -n "${NAMESPACE}" "${POD}"
+"${KUBECTL_BIN}" delete pod -n "${NAMESPACE}" "${POD}"
 
 echo ""
 echo "Pod '${POD}' deleted."
@@ -47,5 +50,5 @@ echo "  3. Kafka leadership elections occur for any affected partitions."
 echo "  4. Replicas on other brokers continue serving clients (if ISR >= min.insync.replicas)."
 echo ""
 echo "Monitor recovery:"
-echo "  kubectl get pods -n ${NAMESPACE} -w"
+echo "  ${KUBECTL_BIN} get pods -n ${NAMESPACE} -w"
 echo "  make verify-ha"
