@@ -1,5 +1,7 @@
 # kafka-k8s-ha-sre-lab
 
+[![Kind E2E HA](https://github.com/kafka-k8s/kafka-k8s-ha-sre-lab/actions/workflows/kind-e2e-ha.yml/badge.svg)](https://github.com/kafka-k8s/kafka-k8s-ha-sre-lab/actions/workflows/kind-e2e-ha.yml)
+
 Repository: <https://github.com/kafka-k8s/kafka-k8s-ha-sre-lab>
 
 Local-first, production-minded SRE lab for running highly available Apache Kafka on Kubernetes with Strimzi, KRaft mode, Kind, Docker or Podman, Prometheus, Grafana, Alertmanager, and failure simulation workflows.
