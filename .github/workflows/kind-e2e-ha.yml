@@ -1,0 +1,204 @@
+name: Kind E2E HA
+
+# Trigger manually first; add pull_request / push once the job is stable.
+# The full cycle (cluster + Strimzi + Kafka + observability + HA test) takes
+# 15-30 minutes on a GitHub-hosted runner.
+on:
+  workflow_dispatch:
+
+# Only one run at a time; cancel any queued duplicate if a new one is triggered.
+concurrency:
+  group: kind-e2e
+  cancel-in-progress: true
+
+jobs:
+  e2e-ha:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      # -----------------------------------------------------------------------
+      # Setup
+      # -----------------------------------------------------------------------
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ubuntu-latest ships with Docker but not Kind.
+      # Pin Kind to match the kindest/node:v1.31.1 image used in kind-cluster.yaml.
+      - name: Install Kind v0.24.0
+        run: |
+          curl -Lo /tmp/kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+          chmod +x /tmp/kind
+          sudo mv /tmp/kind /usr/local/bin/kind
+          kind version
+
+      # Pin kubectl to the same minor version as the cluster image (v1.31).
+      - name: Install kubectl v1.31.1
+        run: |
+          curl -Lo /tmp/kubectl \
+            https://dl.k8s.io/release/v1.31.1/bin/linux/amd64/kubectl
+          chmod +x /tmp/kubectl
+          sudo mv /tmp/kubectl /usr/local/bin/kubectl
+          kubectl version --client
+
+      # -----------------------------------------------------------------------
+      # Phase 1 — Cluster bootstrap
+      # -----------------------------------------------------------------------
+
+      - name: "Phase 1 | Create Kind cluster (1 CP + 3 workers)"
+        run: make cluster-up-docker
+
+      - name: "Phase 1 | Show nodes"
+        run: kubectl get nodes -o wide
+
+      # -----------------------------------------------------------------------
+      # Phase 2 — Kafka stack
+      # -----------------------------------------------------------------------
+
+      # install-strimzi.sh curls the operator YAML from GitHub releases and
+      # waits up to 300s for the strimzi-cluster-operator rollout.
+      - name: "Phase 2 | Install Strimzi operator (v0.43.0)"
+        run: make install-strimzi
+
+      - name: "Phase 2 | Deploy Kafka KRaft cluster"
+        run: make deploy-kafka
+
+      # Strimzi provisions broker pods after the Kafka CR is accepted.
+      # Allow up to 10 minutes for the full cluster to be Ready.
+      - name: "Phase 2 | Wait for Kafka cluster Ready (10 min max)"
+        run: |
+          kubectl wait kafka/kafka-cluster \
+            -n kafka-lab \
+            --for=condition=Ready \
+            --timeout=600s
+
+      - name: "Phase 2 | Create learning-events topic"
+        run: make create-topic
+
+      # -----------------------------------------------------------------------
+      # Phase 3 — Producer / consumer smoke test
+      # -----------------------------------------------------------------------
+
+      - name: "Phase 3 | Cache pip packages"
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('apps/requirements.txt') }}
+
+      - name: "Phase 3 | Install Python dependencies"
+        run: pip install -r apps/requirements.txt
+
+      # port-forward starts 4 kubectl port-forward processes inside the make
+      # recipe and blocks on `wait`. Backgrounding the whole make invocation
+      # lets those processes outlive this step.
+      # Poll localhost:9092 for up to 30s before proceeding.
+      - name: "Phase 3 | Start Kafka port-forward"
+        run: |
+          nohup make port-forward > /tmp/pf-kafka.log 2>&1 &
+          echo "PF_KAFKA_PID=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 15); do
+            nc -z localhost 9092 2>/dev/null && echo "Kafka port-forward ready (${i}s)" && break
+            sleep 2
+          done
+          nc -z localhost 9092 || { echo "ERROR: Kafka bootstrap port-forward did not become ready"; cat /tmp/pf-kafka.log; exit 1; }
+
+      - name: "Phase 3 | Produce messages"
+        run: make produce
+
+      # consumer.py exits after TIMEOUT_SECONDS=30 of inactivity — CI-safe.
+      - name: "Phase 3 | Consume messages"
+        run: make consume
+
+      # -----------------------------------------------------------------------
+      # Phase 4 — Observability
+      # -----------------------------------------------------------------------
+
+      # deploy-observability applies Prometheus RBAC (cluster-scoped, no -n),
+      # then Prometheus, Grafana, and Alertmanager into kafka-lab.
+      - name: "Phase 4 | Deploy observability stack"
+        run: make deploy-observability
+
+      - name: "Phase 4 | Show observability status"
+        run: make observability-status
+
+      # Give Prometheus, Grafana, and Alertmanager pods up to 2 minutes to start.
+      - name: "Phase 4 | Wait for observability pods Ready"
+        run: |
+          kubectl wait pods \
+            -n kafka-lab \
+            -l 'app in (prometheus,grafana,alertmanager)' \
+            --for=condition=Ready \
+            --timeout=120s
+
+      # validate-observability.sh optionally hits http://localhost:9090 for a
+      # Prometheus targets check, so start the port-forward first.
+      - name: "Phase 4 | Start Prometheus port-forward"
+        run: |
+          nohup make port-forward-prometheus > /tmp/pf-prometheus.log 2>&1 &
+          echo "PF_PROM_PID=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 10); do
+            nc -z localhost 9090 2>/dev/null && echo "Prometheus port-forward ready (${i}s)" && break
+            sleep 2
+          done
+          nc -z localhost 9090 || { echo "ERROR: Prometheus port-forward did not become ready"; cat /tmp/pf-prometheus.log; exit 1; }
+
+      - name: "Phase 4 | Validate observability"
+        run: make validate-observability
+
+      # -----------------------------------------------------------------------
+      # Phase 5 — Broker failure + HA recovery
+      # -----------------------------------------------------------------------
+
+      # kill-broker.sh deletes the first running broker pod. Strimzi restarts it.
+      - name: "Phase 5 | Kill one broker pod"
+        run: make kill-broker
+
+      # verify-ha.sh polls every 5s until all 3 broker pods are 1/1 Ready.
+      # Default timeout is 180s; exits 0 on PASS, 1 on FAIL.
+      - name: "Phase 5 | Verify HA recovery (3 min max)"
+        run: make verify-ha
+
+      - name: "Phase 5 | Produce messages (post-recovery)"
+        run: make produce
+
+      - name: "Phase 5 | Consume messages (post-recovery)"
+        run: make consume
+
+      # -----------------------------------------------------------------------
+      # Failure diagnostics — run only when a step above fails
+      # -----------------------------------------------------------------------
+
+      - name: Collect diagnostics
+        if: failure()
+        run: |
+          echo "=== Nodes ===" && kubectl get nodes -o wide || true
+          echo ""
+          echo "=== All pods ===" && kubectl get pods -A -o wide || true
+          echo ""
+          echo "=== Kafka cluster YAML ===" && kubectl get kafka kafka-cluster -n kafka-lab -o yaml || true
+          echo ""
+          echo "=== Events (kafka-lab) ===" && kubectl get events -n kafka-lab --sort-by=.lastTimestamp | tail -40 || true
+          echo ""
+          echo "=== Broker pod logs ===" && \
+            kubectl logs -n kafka-lab \
+              -l 'strimzi.io/cluster=kafka-cluster,strimzi.io/broker-role=true' \
+              --tail=50 || true
+          echo ""
+          echo "=== Strimzi operator logs ===" && \
+            kubectl logs -n kafka-lab \
+              -l name=strimzi-cluster-operator \
+              --tail=50 || true
+          echo ""
+          echo "=== Kafka port-forward log ===" && cat /tmp/pf-kafka.log || true
+          echo "=== Prometheus port-forward log ===" && cat /tmp/pf-prometheus.log || true
+
+      - name: Upload diagnostics artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-ha-diagnostics
+          path: |
+            /tmp/pf-kafka.log
+            /tmp/pf-prometheus.log
+          retention-days: 3
