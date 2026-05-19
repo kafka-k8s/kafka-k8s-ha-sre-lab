@@ -360,3 +360,215 @@ Use this order to avoid chasing the wrong layer:
 6. Topic: `learning-events` exists.
 7. Clients: producer and consumer configuration.
 8. Observability: Prometheus scrape, Grafana panels, Alertmanager routes.
+
+---
+
+## Observability Troubleshooting
+
+### Prometheus Target Down
+
+Symptoms:
+- Prometheus Status → Targets shows a target in `DOWN` state.
+- No metrics from Kafka brokers, Kafka Exporter, or Strimzi operator.
+
+Checks:
+
+```sh
+kubectl get pods -n kafka-lab -o wide
+kubectl get pods -n kafka-lab -l strimzi.io/broker-role=true
+kubectl get pods -n kafka-lab -l strimzi.io/name=kafka-cluster-kafka-exporter
+kubectl get pods -n kafka-lab -l name=strimzi-cluster-operator
+```
+
+For Kafka brokers:
+- Confirm `spec.kafka.metricsConfig` is set in the Kafka CR (`kafka-cluster.yaml`).
+- Confirm the `kafka-metrics-config` ConfigMap exists.
+- The broker pod must be `1/1 Running` for the metrics endpoint to be reachable.
+
+For Kafka Exporter:
+- Confirm `spec.kafkaExporter` is set in the Kafka CR.
+- Strimzi creates the exporter deployment after the cluster is `READY=True`.
+- Check exporter logs: `kubectl logs -n kafka-lab deploy/kafka-cluster-kafka-exporter`.
+
+For Strimzi operator:
+- Confirm the operator pod is `1/1 Running`.
+- The operator exposes metrics on port 8080 by default.
+
+For all targets:
+- Confirm the Prometheus ServiceAccount has ClusterRole bound:
+  ```sh
+  kubectl get clusterrolebinding prometheus
+  kubectl get serviceaccount -n kafka-lab prometheus
+  ```
+
+### Prometheus RBAC Missing
+
+Symptoms:
+- All Kubernetes pod discovery targets fail.
+- Prometheus logs show `403 Forbidden` or permission errors.
+
+Checks:
+
+```sh
+kubectl get clusterrole prometheus
+kubectl get clusterrolebinding prometheus
+```
+
+Fix:
+
+```sh
+kubectl apply -f observability/prometheus/prometheus-rbac.yaml
+```
+
+Note: `kubectl apply -n kafka-lab -f` ignores the namespace flag for
+cluster-scoped resources (ClusterRole, ClusterRoleBinding). The
+`deploy-observability` Makefile target applies RBAC without `-n`.
+
+### Grafana Cannot Reach Prometheus
+
+Symptoms:
+- Grafana dashboard shows "No data" for all panels.
+- Grafana Explore shows "Error: error parsing regexp".
+- Grafana reports "Failed to call resource" for the Prometheus datasource.
+
+Checks:
+
+```sh
+kubectl get svc -n kafka-lab prometheus
+kubectl get pods -n kafka-lab -l app=prometheus
+# Confirm Grafana datasource config:
+kubectl get configmap -n kafka-lab grafana-datasource -o yaml
+```
+
+Common fixes:
+- Confirm Prometheus pod is `1/1 Running`.
+- The datasource URL is `http://prometheus:9090`. If you changed the Service
+  name, update the ConfigMap.
+- Delete and re-create the Grafana pod to reload provisioning:
+  ```sh
+  kubectl rollout restart deployment/grafana -n kafka-lab
+  ```
+
+### Alertmanager Not Receiving Alerts
+
+Symptoms:
+- Prometheus alert rules are firing but Alertmanager UI shows no alerts.
+- Alertmanager UI shows "0 active alerts".
+
+Checks:
+
+```sh
+kubectl get svc -n kafka-lab alertmanager
+kubectl get pods -n kafka-lab -l app=alertmanager
+# Check Prometheus alerting config:
+kubectl get configmap -n kafka-lab prometheus-config -o yaml | grep alertmanager
+```
+
+Common fixes:
+- Confirm the Alertmanager Service exists on port 9093.
+- Confirm the Prometheus ConfigMap points to `alertmanager:9093`.
+- Check if the alert's `for:` duration has elapsed (e.g., `for: 1m` means the
+  condition must hold for 1 minute before the alert fires).
+- Reload Prometheus config: `curl -X POST http://localhost:9090/-/reload`
+  (requires port-forward-prometheus to be running).
+
+### Kafka Metrics Missing
+
+Symptoms:
+- Prometheus targets for `kafka-brokers` are UP but no `kafka_*` metrics exist.
+- Querying `kafka_server_replicamanager_underreplicatedpartitions` returns no data.
+
+Checks:
+
+```sh
+# Confirm metricsConfig is set in Kafka CR:
+kubectl get kafka -n kafka-lab kafka-cluster -o jsonpath='{.spec.kafka.metricsConfig}'
+# Confirm the ConfigMap exists:
+kubectl get configmap -n kafka-lab kafka-metrics-config
+# Check broker pod for jmx_exporter process:
+kubectl exec -n kafka-lab <broker-pod> -- ls /tmp/jmx_prometheus_javaagent*.jar 2>/dev/null || true
+```
+
+Common fixes:
+- If `spec.kafka.metricsConfig` is not set, apply the updated Kafka CR:
+  ```sh
+  make deploy-kafka
+  ```
+  Strimzi will roll broker pods to add the JMX exporter. Allow 2-5 minutes.
+- If the ConfigMap is missing:
+  ```sh
+  kubectl apply -n kafka-lab -f manifests/kafka/kafka-metrics-config.yaml
+  ```
+- After the Kafka CR is updated, Strimzi may restart broker pods one at a time.
+  Monitor with: `kubectl get pods -n kafka-lab -w`
+
+### Port-Forward Conflict
+
+Symptoms:
+- `make port-forward-prometheus` fails with "address already in use".
+- Port 9090, 3000, or 9093 is occupied by another process.
+
+Checks:
+
+```sh
+# Linux/macOS:
+lsof -i :9090
+lsof -i :3000
+lsof -i :9093
+```
+
+Common fixes:
+- Stop the existing process using the port.
+- Override the local port with Makefile variables:
+  ```sh
+  PROM_LOCAL_PORT=19090 make port-forward-prometheus
+  GRAFANA_LOCAL_PORT=13000 make port-forward-grafana
+  ALERTMANAGER_LOCAL_PORT=19093 make port-forward-alertmanager
+  ```
+
+### Grafana Dashboard Shows "No Data"
+
+Symptoms:
+- Grafana dashboard loads but all panels show "No data" or "N/A".
+
+Common causes and fixes:
+
+1. **Prometheus target is not yet up**: Wait for broker pods to be ready and
+   Prometheus to complete a scrape cycle (up to 15 seconds after deploy).
+
+2. **metricsConfig not yet applied**: Strimzi needs to roll broker pods after
+   `make deploy-kafka` updates the Kafka CR. This takes 2-5 minutes.
+
+3. **Wrong time range**: The dashboard defaults to "Last 1 hour". If
+   observability was just deployed, no historical data exists. Set the time
+   range to "Last 15 minutes" or "Last 5 minutes" to see recent data.
+
+4. **Grafana datasource misconfigured**: Go to Configuration → Data Sources →
+   Prometheus → Test. If it fails, check the Service name and port.
+
+5. **Consumer lag panel empty**: The consumer lag panel requires Kafka Exporter
+   (`kafkaExporter` in Kafka CR) and a consumer group to have committed offsets.
+   Run `make produce` and `make consume` first.
+
+### Observability Pods Not Starting
+
+Symptoms:
+- Prometheus, Grafana, or Alertmanager pods stay in `Pending` or `CrashLoopBackOff`.
+
+Checks:
+
+```sh
+kubectl describe pod -n kafka-lab <pod-name>
+kubectl logs -n kafka-lab <pod-name>
+kubectl get events -n kafka-lab --sort-by=.lastTimestamp
+```
+
+Common fixes:
+- **Pending**: Check resource pressure. Observability pods need approximately
+  450 MB RAM total. Free up resources or increase Docker Desktop/Podman limits.
+- **ImagePullBackOff**: Check internet connectivity. The images are pulled from
+  Docker Hub (prom/prometheus, grafana/grafana, prom/alertmanager).
+- **CrashLoopBackOff for Prometheus**: Check that the config ConfigMap syntax
+  is valid. A YAML error in prometheus.yml causes immediate crash.
+- **CrashLoopBackOff for Grafana**: Check that the provisioning ConfigMaps
+  have valid YAML. Grafana is strict about provisioning file format.

@@ -1,0 +1,152 @@
+# Prometheus configuration ConfigMap.
+#
+# Scrape targets:
+#
+#   prometheus      Prometheus scrapes itself for self-monitoring.
+#
+#   kafka-brokers   Kafka broker pods in kafka-lab.
+#                   Strimzi starts the JMX Prometheus Exporter on port 9404
+#                   when metricsConfig is set in the Kafka CR.
+#                   Pods are discovered via Kubernetes pod-role SD, filtered
+#                   by the strimzi.io/broker-role=true label that Strimzi
+#                   applies to every broker pod.
+#
+#   kafka-exporter  Kafka Exporter pod deployed by Strimzi when kafkaExporter
+#                   is set in the Kafka CR. Exposes consumer group lag and
+#                   topic partition metrics on port 9308.
+#                   Filtered by strimzi.io/name=kafka-cluster-kafka-exporter.
+#
+#   strimzi-operator
+#                   The Strimzi Cluster Operator exposes internal metrics on
+#                   port 8080. Filtered by the name=strimzi-cluster-operator
+#                   pod label.
+#
+# Alertmanager routing:
+#   All firing alerts are sent to Alertmanager at alertmanager:9093.
+#   The Alertmanager service is defined in observability/alertmanager/.
+#
+# Alert rules:
+#   Loaded from /etc/prometheus/rules/kafka-alert-rules.yaml, which is
+#   mounted from the kafka-alert-rules ConfigMap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: kafka-lab
+  labels:
+    app: prometheus
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval:     15s
+      evaluation_interval: 15s
+      scrape_timeout:      10s
+
+    # Send alerts to Alertmanager.
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+                - alertmanager:9093
+
+    # Load alert rule files.
+    rule_files:
+      - /etc/prometheus/rules/*.yaml
+
+    scrape_configs:
+
+      # -----------------------------------------------------------------------
+      # Prometheus self-scrape.
+      # -----------------------------------------------------------------------
+      - job_name: prometheus
+        static_configs:
+          - targets:
+              - localhost:9090
+
+      # -----------------------------------------------------------------------
+      # Kafka broker metrics (JMX Prometheus Exporter on port 9404).
+      #
+      # Strimzi adds strimzi.io/broker-role=true to every combined/broker pod.
+      # The relabel rules below:
+      #   1. Keep only pods with strimzi.io/cluster=kafka-cluster
+      #      and strimzi.io/broker-role=true.
+      #   2. Set the scrape address to <pod_ip>:9404.
+      #   3. Add a pod label to the scraped metrics for debugging.
+      # -----------------------------------------------------------------------
+      - job_name: kafka-brokers
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - kafka-lab
+        relabel_configs:
+          - source_labels:
+              - __meta_kubernetes_pod_label_strimzi_io_cluster
+            regex: kafka-cluster
+            action: keep
+          - source_labels:
+              - __meta_kubernetes_pod_label_strimzi_io_broker_role
+            regex: "true"
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_ip]
+            regex: (.+)
+            target_label: __address__
+            replacement: "$1:9404"
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+      # -----------------------------------------------------------------------
+      # Kafka Exporter metrics (consumer group lag on port 9308).
+      #
+      # Strimzi creates a Deployment named kafka-cluster-kafka-exporter when
+      # kafkaExporter is set in the Kafka CR. The pod label
+      # strimzi.io/name=kafka-cluster-kafka-exporter identifies it.
+      # -----------------------------------------------------------------------
+      - job_name: kafka-exporter
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - kafka-lab
+        relabel_configs:
+          - source_labels:
+              - __meta_kubernetes_pod_label_strimzi_io_name
+            regex: kafka-cluster-kafka-exporter
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_ip]
+            regex: (.+)
+            target_label: __address__
+            replacement: "$1:9308"
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+      # -----------------------------------------------------------------------
+      # Strimzi Cluster Operator metrics (port 8080).
+      #
+      # The operator pod carries the label name=strimzi-cluster-operator.
+      # -----------------------------------------------------------------------
+      - job_name: strimzi-operator
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - kafka-lab
+        relabel_configs:
+          - source_labels:
+              - __meta_kubernetes_pod_label_name
+            regex: strimzi-cluster-operator
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_ip]
+            regex: (.+)
+            target_label: __address__
+            replacement: "$1:8080"
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace

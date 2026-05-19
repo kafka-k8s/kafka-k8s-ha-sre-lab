@@ -1,0 +1,158 @@
+# JMX Prometheus Exporter configuration for Kafka brokers.
+#
+# Strimzi mounts this ConfigMap into each broker pod when metricsConfig is
+# set in the Kafka CR. The exporter listens on port 9404 by default and
+# translates JMX beans into Prometheus metrics.
+#
+# Rules are evaluated in order. The first matching rule wins.
+# lowercaseOutputName: true converts metric names to lowercase for
+# Prometheus naming conventions.
+#
+# The rules below capture the Kafka signals most useful for SRE work:
+#   - Broker topic throughput (messages/bytes in and out).
+#   - ReplicaManager state (under-replicated and offline partitions).
+#   - KafkaController state (offline partitions, active controller count).
+#   - ISR shrink and expand events.
+#   - Request metrics (produce and fetch rates).
+#   - JVM heap memory and garbage collection.
+#
+# Reference: https://strimzi.io/docs/operators/latest/deploying.html#proc-kafka-metrics-deploy-options-str
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-metrics-config
+  namespace: kafka-lab
+  labels:
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: kafka-metrics
+data:
+  kafka-metrics-config.yml: |
+    lowercaseOutputName: true
+    lowercaseOutputLabelNames: true
+    rules:
+
+      # -----------------------------------------------------------------------
+      # BrokerTopicMetrics — per-topic
+      # Captures messages-in, bytes-in, bytes-out, and failed-produce/fetch
+      # counters broken down by topic.
+      # -----------------------------------------------------------------------
+      - pattern: >-
+          kafka.server<type=BrokerTopicMetrics,
+          name=(BytesInPerSec|BytesOutPerSec|MessagesInPerSec|FailedProduceRequestsPerSec|FailedFetchRequestsPerSec),
+          topic=(.+)><>Count
+        name: kafka_server_brokertopicmetrics_$1_total
+        type: COUNTER
+        labels:
+          topic: "$2"
+
+      # BrokerTopicMetrics — cluster-wide (no topic label)
+      - pattern: >-
+          kafka.server<type=BrokerTopicMetrics,
+          name=(BytesInPerSec|BytesOutPerSec|MessagesInPerSec)><>Count
+        name: kafka_server_brokertopicmetrics_$1_total
+        type: COUNTER
+
+      # -----------------------------------------------------------------------
+      # ReplicaManager — replication health
+      # UnderReplicatedPartitions and ISR shrink/expand are key HA signals.
+      # -----------------------------------------------------------------------
+      - pattern: >-
+          kafka.server<type=ReplicaManager,
+          name=(UnderReplicatedPartitions|UnderMinIsrPartitionCount|OfflineReplicaCount|AtMinIsrPartitionCount)><>Value
+        name: kafka_server_replicamanager_$1
+
+      - pattern: >-
+          kafka.server<type=ReplicaManager,
+          name=(IsrShrinksPerSec|IsrExpandsPerSec|FailedIsrUpdatesPerSec)><>Count
+        name: kafka_server_replicamanager_$1_total
+        type: COUNTER
+
+      # -----------------------------------------------------------------------
+      # KafkaController — partition and controller state
+      # OfflinePartitionsCount > 0 is a critical alert trigger.
+      # ActiveControllerCount should always equal 1 in a healthy cluster.
+      # -----------------------------------------------------------------------
+      - pattern: >-
+          kafka.controller<type=KafkaController,
+          name=(OfflinePartitionsCount|ActiveControllerCount|GlobalTopicCount|GlobalPartitionCount)><>Value
+        name: kafka_controller_kafkacontroller_$1
+
+      - pattern: >-
+          kafka.controller<type=ControllerStats,
+          name=(LeaderElectionRateAndTimeMs|UncleanLeaderElectionsPerSec)><>Count
+        name: kafka_controller_controllerstats_$1_total
+        type: COUNTER
+
+      # -----------------------------------------------------------------------
+      # Network RequestMetrics — produce and fetch request rates
+      # -----------------------------------------------------------------------
+      - pattern: >-
+          kafka.network<type=RequestMetrics,
+          name=RequestsPerSec, request=(Produce|FetchConsumer|FetchFollower)><>Count
+        name: kafka_network_requestmetrics_requests_total
+        type: COUNTER
+        labels:
+          request: "$1"
+
+      - pattern: >-
+          kafka.network<type=RequestMetrics,
+          name=TotalTimeMs, request=(Produce|FetchConsumer|FetchFollower)><>(\d+)thPercentile
+        name: kafka_network_requestmetrics_totaltime_ms
+        type: GAUGE
+        labels:
+          request: "$1"
+          quantile: "0.$2"
+
+      # -----------------------------------------------------------------------
+      # Log — partition count and log flush stats
+      # -----------------------------------------------------------------------
+      - pattern: >-
+          kafka.log<type=LogManager,
+          name=(OfflineLogDirectoryCount)><>Value
+        name: kafka_log_logmanager_$1
+
+      # -----------------------------------------------------------------------
+      # Purgatory — produce and fetch purgatory sizes
+      # -----------------------------------------------------------------------
+      - pattern: >-
+          kafka.server<type=DelayedOperationPurgatory,
+          name=PurgatorySize, delayedOperation=(Produce|Fetch)><>Value
+        name: kafka_server_delayedoperationpurgatory_purgatorysize
+        labels:
+          delayed_operation: "$1"
+
+      # -----------------------------------------------------------------------
+      # JVM memory — heap usage for capacity awareness
+      # -----------------------------------------------------------------------
+      - pattern: >-
+          java.lang<type=Memory><HeapMemoryUsage>(\w+)
+        name: jvm_memory_heap_$1
+        type: GAUGE
+
+      - pattern: >-
+          java.lang<type=Memory><NonHeapMemoryUsage>(\w+)
+        name: jvm_memory_nonheap_$1
+        type: GAUGE
+
+      # JVM GC — collection count and time
+      - pattern: >-
+          java.lang<type=GarbageCollector,
+          name=(.+)><>CollectionCount
+        name: jvm_gc_collection_total
+        type: COUNTER
+        labels:
+          gc: "$1"
+
+      - pattern: >-
+          java.lang<type=GarbageCollector,
+          name=(.+)><>CollectionTime
+        name: jvm_gc_collection_seconds_total
+        type: COUNTER
+        labels:
+          gc: "$1"
+
+      # JVM threads
+      - pattern: >-
+          java.lang<type=Threading><>(\w+ThreadCount)
+        name: jvm_threads_$1
+        type: GAUGE

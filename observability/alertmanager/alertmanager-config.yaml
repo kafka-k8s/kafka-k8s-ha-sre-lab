@@ -1,0 +1,71 @@
+# Alertmanager configuration ConfigMap.
+#
+# This is a minimal local-only Alertmanager configuration with a single
+# "null" receiver that silently accepts all alerts. No external integrations
+# (Slack, email, PagerDuty, webhook) are configured in this phase.
+#
+# The null receiver is appropriate for a local lab where the goal is to see
+# alerts fire and understand their structure in the Alertmanager UI, not to
+# notify an on-call team.
+#
+# Future integration paths (not implemented in this phase):
+#   - Slack: add a slack_configs receiver with a webhook URL.
+#   - Email: add an email_configs receiver with SMTP settings.
+#   - PagerDuty: add a pagerduty_configs receiver.
+#   - Webhook: add a webhook_configs receiver for any HTTP endpoint.
+#
+# Grouping strategy:
+#   - Alerts are grouped by alertname and namespace to reduce noise during
+#     a broker failure (all three KafkaBrokerDown alerts group into one
+#     notification instead of three separate ones).
+#   - group_wait: 30s — wait 30 seconds before sending the first notification
+#     so that related alerts can group together.
+#   - group_interval: 5m — wait 5 minutes before sending a notification for
+#     newly added alerts in an existing group.
+#   - repeat_interval: 1h — resend a notification if the alert is still firing
+#     after 1 hour.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: kafka-lab
+  labels:
+    app: alertmanager
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: alertmanager
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+
+    route:
+      group_by: ['alertname', 'namespace']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 1h
+      receiver: null-receiver
+
+      # Route critical alerts to the same null receiver.
+      # Replace this with a real receiver in production.
+      routes:
+        - match:
+            severity: critical
+          receiver: null-receiver
+          group_wait: 10s
+        - match:
+            severity: warning
+          receiver: null-receiver
+
+    receivers:
+      # null-receiver: accepts all alerts and does nothing.
+      # Replace with a real receiver (Slack, email, webhook) for production.
+      - name: null-receiver
+
+    inhibit_rules:
+      # Suppress KafkaClusterBrokerCountLow when KafkaBrokerDown fires for the
+      # same namespace. The more specific broker-level alert is sufficient.
+      - source_matchers:
+          - alertname = KafkaBrokerDown
+        target_matchers:
+          - alertname = KafkaClusterBrokerCountLow
+        equal: ['namespace']

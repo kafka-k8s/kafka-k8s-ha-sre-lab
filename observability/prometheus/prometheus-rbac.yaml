@@ -1,0 +1,65 @@
+# Prometheus RBAC
+#
+# Prometheus requires read access to Kubernetes pod, service, and endpoint
+# metadata to perform dynamic service discovery. The ClusterRole below
+# grants the minimum necessary permissions.
+#
+# All three resources (ServiceAccount, ClusterRole, ClusterRoleBinding) are
+# defined here so they can be applied with a single kubectl command. The
+# ServiceAccount lives in the kafka-lab namespace; the ClusterRole is cluster-
+# scoped (namespace flag is ignored for it by kubectl).
+#
+# Local lab note: In production, tighten the ClusterRole to specific resource
+# groups and consider using a Role + RoleBinding scoped to the Kafka namespace
+# if you only need to scrape resources within that namespace.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: kafka-lab
+  labels:
+    app: prometheus
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: prometheus
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: prometheus
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/proxy
+      - services
+      - endpoints
+      - pods
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources:
+      - ingresses
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: kafka-lab

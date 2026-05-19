@@ -1,0 +1,31 @@
+# Grafana Prometheus datasource provisioning.
+#
+# Grafana automatically loads datasource definitions from
+# /etc/grafana/provisioning/datasources/ on startup.
+# The uid "prometheus" is referenced by all dashboard panels.
+#
+# In-cluster URL: http://prometheus:9090
+# The Prometheus Service is in the same namespace (kafka-lab), so the
+# short service name resolves via Kubernetes DNS.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource
+  namespace: kafka-lab
+  labels:
+    app: grafana
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: grafana
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: prometheus
+        url: http://prometheus:9090
+        access: proxy
+        isDefault: true
+        editable: false
+        jsonData:
+          timeInterval: "15s"

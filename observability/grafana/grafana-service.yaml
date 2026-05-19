@@ -1,0 +1,25 @@
+# Grafana ClusterIP Service.
+#
+# Port 3000 is the default Grafana HTTP port.
+#
+# Access locally: make port-forward-grafana
+# Then open: http://localhost:3000
+# Login: admin / admin (local lab default)
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: kafka-lab
+  labels:
+    app: grafana
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: grafana
+spec:
+  type: ClusterIP
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP

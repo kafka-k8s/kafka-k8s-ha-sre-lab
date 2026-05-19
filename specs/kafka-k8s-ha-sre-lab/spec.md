@@ -51,16 +51,14 @@ The MVP focuses on implementation-ready documentation and a realistic local arch
 
 ## Future Scope
 
-- Actual Strimzi operator manifests pinned to a tested version.
-- Kafka KRaft manifests and topic/user manifests.
-- Python producer and consumer implementation.
-- Prometheus scrape config, Kafka alert rules, and Grafana dashboards.
 - MirrorMaker 2 lab for multi-cluster replication.
 - k3s or kubeadm deployment variant.
 - Optional EKS documentation.
 - GitOps deployment with Argo CD or Flux.
 - Upgrade testing and backup automation.
 - Load and soak testing.
+- kube-state-metrics for Kubernetes-level pod restart alerting.
+- Security baseline: SASL/SCRAM, ACLs, and NetworkPolicy.
 
 ## Functional Requirements
 
@@ -98,7 +96,33 @@ The consumer must read from `learning-events`, print received events, and suppor
 
 ### FR-009 Observability
 
-The project must include Prometheus, Grafana, and Alertmanager design and later implementation hooks.
+The project must include a working local observability layer comprising Prometheus, Grafana, and Alertmanager, deployable via `make deploy-observability`.
+
+**Phase 4 Observability implementation requirements:**
+
+- Prometheus must scrape Kafka broker JMX metrics (port 9404) using Kubernetes pod discovery.
+- Prometheus must scrape Kafka Exporter metrics (port 9308) for consumer lag.
+- Prometheus must scrape the Strimzi Cluster Operator metrics (port 8080).
+- Prometheus must load and evaluate Kafka alert rules.
+- Prometheus must route firing alerts to Alertmanager.
+- Grafana must have Prometheus provisioned as its default datasource.
+- Grafana must load the Kafka Overview dashboard automatically on startup.
+- Alertmanager must receive alerts from Prometheus and provide a local UI.
+- All three components must be accessible locally via `make port-forward-*` targets.
+- The Kafka CR must be updated to enable JMX metrics (`metricsConfig`) and Kafka Exporter (`kafkaExporter`).
+
+**Alert rules implemented:**
+- KafkaBrokerDown
+- KafkaBrokerUnreachable
+- KafkaClusterBrokerCountLow
+- KafkaUnderReplicatedPartitions
+- KafkaOfflinePartitions
+- KafkaActiveControllerCount
+- StrimziOperatorDown
+- ConsumerLagHigh
+- KafkaExporterDown
+
+**Local limitation:** KafkaPodCrashLooping based on Kubernetes restart counts requires kube-state-metrics, which is not deployed in this phase. Persistent broker unavailability is covered by KafkaBrokerUnreachable (fires after 5 minutes).
 
 ### FR-010 Failure Simulation
 

@@ -242,3 +242,153 @@ make install-strimzi
 make deploy-kafka
 make create-topic
 ```
+
+---
+
+## Deploying Observability
+
+After the Kafka cluster is ready and the topic is created, deploy the
+observability stack with a single command:
+
+```sh
+make deploy-observability
+```
+
+This applies:
+- Kafka broker JMX metrics ConfigMap and updates the Kafka CR.
+- Prometheus RBAC (ServiceAccount, ClusterRole, ClusterRoleBinding).
+- Prometheus ConfigMap, alert rules, Deployment, and Service.
+- Grafana datasource, dashboard provider, Kafka Overview dashboard, Deployment, and Service.
+- Alertmanager config, Deployment, and Service.
+
+Allow 1-2 minutes for all pods to reach Ready state.
+
+Check status:
+
+```sh
+make observability-status
+```
+
+## Accessing Observability UIs
+
+Each UI requires a port-forward (run each in a separate terminal):
+
+**Terminal A:**
+```sh
+make port-forward-prometheus
+# Prometheus: http://localhost:9090
+```
+
+**Terminal B:**
+```sh
+make port-forward-grafana
+# Grafana: http://localhost:3000  Login: admin / admin
+```
+
+**Terminal C:**
+```sh
+make port-forward-alertmanager
+# Alertmanager: http://localhost:9093
+```
+
+## Validating Observability
+
+Run the automated validation (after observability is deployed):
+
+```sh
+make validate-observability
+```
+
+This checks:
+- Prometheus pod is 1/1 Ready.
+- Grafana pod is 1/1 Ready.
+- Alertmanager pod is 1/1 Ready.
+- Kafka Exporter pod is 1/1 Ready.
+- If port-forward-prometheus is running: checks that all 3 kafka-broker targets are UP.
+
+For manual validation:
+
+```sh
+# Check Prometheus targets
+# Open: http://localhost:9090/targets
+# Expected: kafka-brokers (3 up), kafka-exporter (1 up), strimzi-operator (1 up)
+
+# Check Kafka metric
+curl -s 'http://localhost:9090/api/v1/query?query=kafka_server_replicamanager_underreplicatedpartitions' \
+  | python3 -m json.tool
+
+# Check consumer lag (after running producer and consumer)
+curl -s 'http://localhost:9090/api/v1/query?query=kafka_consumergroup_lag' \
+  | python3 -m json.tool
+```
+
+## Full Local Validation Flow Including Observability
+
+```sh
+# 1. Create the cluster
+make cluster-up-docker
+make nodes
+
+# 2. Install Strimzi
+make install-strimzi
+
+# 3. Deploy Kafka
+make deploy-kafka
+make status
+
+# 4. Create topic
+make create-topic
+
+# 5. Install Python dependency
+pip install -r apps/requirements.txt
+
+# 6. In Terminal A: start Kafka port-forward
+make port-forward
+
+# 7. In Terminal B: produce events
+make produce
+
+# 8. In Terminal C: consume events
+make consume
+
+# 9. Deploy observability
+make deploy-observability
+make observability-status
+
+# 10. In separate terminals: access UIs
+make port-forward-prometheus    # http://localhost:9090
+make port-forward-grafana       # http://localhost:3000
+make port-forward-alertmanager  # http://localhost:9093
+
+# 11. Validate observability
+make validate-observability
+
+# 12. Trigger broker failure
+make kill-broker
+
+# 13. Watch recovery
+make verify-ha
+
+# 14. Observe in Prometheus (Status → Alerts):
+#     KafkaBrokerDown should fire within 1 minute of kill-broker
+#     KafkaBrokerDown should resolve after verify-ha reports PASS
+
+# 15. Check Grafana Kafka Overview:
+#     Active Brokers drops from 3 to 2 during failure
+#     Broker Target Status drops to 0 for the deleted pod
+#     Active Brokers returns to 3 after recovery
+
+# 16. Run producer and consumer again to confirm continued message flow
+make produce
+make consume
+```
+
+## Observability Local Limitations
+
+- Prometheus metrics are lost when the pod restarts (emptyDir storage).
+- Grafana user data is lost when the pod restarts. Provisioned dashboards survive.
+- No real alerting: Alertmanager uses a null receiver. No external notifications are sent.
+- No Kafka restart-count alerts without kube-state-metrics.
+- All components share the same Kind cluster. They do not provide independent failure detection.
+
+See [docs/observability.md](observability.md) for complete observability documentation.

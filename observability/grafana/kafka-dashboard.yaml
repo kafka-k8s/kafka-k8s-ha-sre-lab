@@ -1,0 +1,455 @@
+# Kafka Overview Grafana dashboard — embedded as a ConfigMap.
+#
+# The Grafana Deployment mounts this ConfigMap at /var/lib/grafana/dashboards/
+# so Grafana's dashboard provider picks it up automatically at startup.
+#
+# Dashboard panels:
+#   Row 1 — Status stats
+#     Active Brokers          count(up{job="kafka-brokers"} == 1)
+#     Under-Replicated Partitions  sum(kafka_server_replicamanager_underreplicatedpartitions)
+#     Offline Partitions       sum(kafka_controller_kafkacontroller_offlinepartitionscount)
+#     Strimzi Operator         up{job="strimzi-operator"}
+#   Row 2 — Throughput
+#     Messages In/sec          rate(kafka_server_brokertopicmetrics_messagesinpersec_total[5m])
+#     Consumer Lag             kafka_consumergroup_lag{topic="learning-events"}
+#   Row 3 — Replication
+#     ISR Shrink/Expand        rate of isr shrinks and expands
+#     Broker Target Status     up{job="kafka-brokers"} per pod
+#
+# Official Strimzi dashboards (recommended for production use):
+#   https://github.com/strimzi/strimzi-kafka-operator/tree/main/examples/metrics/grafana-dashboards
+#   Import strimzi-kafka.json and strimzi-operators.json from the Grafana UI
+#   (+ → Import → Upload JSON file) for a richer dashboard set.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-dashboard
+  namespace: kafka-lab
+  labels:
+    app: grafana
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: grafana
+data:
+  kafka-overview.json: |
+    {
+      "id": null,
+      "uid": "kafka-overview",
+      "title": "Kafka Overview",
+      "description": "Kafka HA SRE Lab — broker health, replication, throughput, and consumer lag",
+      "tags": ["kafka", "strimzi", "sre"],
+      "schemaVersion": 38,
+      "version": 1,
+      "refresh": "10s",
+      "time": { "from": "now-1h", "to": "now" },
+      "timepicker": {},
+      "timezone": "browser",
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "links": [],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "templating": { "list": [] },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Active Brokers",
+          "description": "Number of Kafka broker scrape targets currently reachable. Expected: 3.",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red",    "value": null },
+                  { "color": "yellow", "value": 2 },
+                  { "color": "green",  "value": 3 }
+                ]
+              },
+              "unit": "short",
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "count(up{job=\"kafka-brokers\"} == 1) or vector(0)",
+              "instant": true,
+              "legendFormat": "Active Brokers",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Under-Replicated Partitions",
+          "description": "Partitions where one or more replicas are not in sync. Should be 0 in a healthy cluster.",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red",   "value": 1 }
+                ]
+              },
+              "unit": "short",
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(kafka_server_replicamanager_underreplicatedpartitions) or vector(0)",
+              "instant": true,
+              "legendFormat": "Under-Replicated",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Offline Partitions",
+          "description": "Partitions with no available leader. A non-zero value causes producer and consumer failures.",
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red",   "value": 1 }
+                ]
+              },
+              "unit": "short",
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(kafka_controller_kafkacontroller_offlinepartitionscount) or vector(0)",
+              "instant": true,
+              "legendFormat": "Offline Partitions",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Strimzi Operator",
+          "description": "1 = operator is reachable. 0 = operator is unreachable (Kafka reconciliation will stall).",
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red",   "value": null },
+                  { "color": "green", "value": 1 }
+                ]
+              },
+              "unit": "short",
+              "mappings": [
+                { "options": { "0": { "text": "DOWN", "color": "red"   } }, "type": "value" },
+                { "options": { "1": { "text": "UP",   "color": "green" } }, "type": "value" }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "up{job=\"strimzi-operator\"} or vector(0)",
+              "instant": true,
+              "legendFormat": "Strimzi Operator",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Messages In / sec",
+          "description": "Rate of messages received by all Kafka brokers combined. Drops to zero when no producer is active.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "tooltip": { "mode": "multi", "sort": "none" },
+            "legend": { "displayMode": "list", "placement": "bottom" }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "drawStyle": "line",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(rate(kafka_server_brokertopicmetrics_messagesinpersec_total[5m]))",
+              "legendFormat": "Messages In/sec (cluster)",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (topic) (rate(kafka_server_brokertopicmetrics_messagesinpersec_total{topic=~\".+\"}[5m]))",
+              "legendFormat": "{{ topic }}",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Consumer Lag — learning-events",
+          "description": "Consumer group lag for the learning-events topic. Requires Kafka Exporter (kafkaExporter in Kafka CR). A growing lag during a broker failure indicates recovery is not complete.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "tooltip": { "mode": "multi", "sort": "none" },
+            "legend": { "displayMode": "list", "placement": "bottom" }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "drawStyle": "line",
+                "spanNulls": true
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 50 },
+                  { "color": "red",    "value": 100 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (consumergroup) (kafka_consumergroup_lag{topic=\"learning-events\"})",
+              "legendFormat": "{{ consumergroup }}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "ISR Shrink / Expand Rate",
+          "description": "Rate of ISR shrink and expand events. A spike in shrinks during a broker failure is expected. Shrinks that do not resolve with matching expands indicate a persistent replication problem.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "tooltip": { "mode": "multi", "sort": "none" },
+            "legend": { "displayMode": "list", "placement": "bottom" }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "drawStyle": "line",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(rate(kafka_server_replicamanager_isrshrinkspersec_total[5m]))",
+              "legendFormat": "ISR Shrinks/sec",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(rate(kafka_server_replicamanager_isrexpandspersec_total[5m]))",
+              "legendFormat": "ISR Expands/sec",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Broker Target Status",
+          "description": "1 = broker metrics endpoint reachable, 0 = unreachable. Drops to 0 during a kill-broker test and recovers when the pod restarts. Matches KafkaBrokerDown alert behavior.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "tooltip": { "mode": "multi", "sort": "none" },
+            "legend": { "displayMode": "list", "placement": "bottom" }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "drawStyle": "line",
+                "spanNulls": false
+              },
+              "min": 0,
+              "max": 1
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "up{job=\"kafka-brokers\"}",
+              "legendFormat": "{{ pod }}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Bytes In / Out per sec",
+          "description": "Cluster-wide Kafka network throughput. Useful for confirming that the producer and consumer are active.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "tooltip": { "mode": "multi", "sort": "none" },
+            "legend": { "displayMode": "list", "placement": "bottom" }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "bytes",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "drawStyle": "line",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(rate(kafka_server_brokertopicmetrics_bytesinpersec_total[5m]))",
+              "legendFormat": "Bytes In/sec",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(rate(kafka_server_brokertopicmetrics_bytesoutpersec_total[5m]))",
+              "legendFormat": "Bytes Out/sec",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "JVM Heap Usage",
+          "description": "JVM heap memory used by each Kafka broker. Monitor for sustained growth that could cause GC pressure or OOM restarts.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "tooltip": { "mode": "multi", "sort": "none" },
+            "legend": { "displayMode": "list", "placement": "bottom" }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "bytes",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "drawStyle": "line",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "jvm_memory_heap_used{job=\"kafka-brokers\"}",
+              "legendFormat": "{{ pod }} heap used",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    }

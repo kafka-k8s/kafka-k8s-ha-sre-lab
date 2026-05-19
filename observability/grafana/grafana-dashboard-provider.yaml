@@ -1,0 +1,33 @@
+# Grafana dashboard provider provisioning.
+#
+# Grafana automatically loads dashboard JSON files from the path specified
+# here on startup. The Grafana Deployment mounts the kafka-dashboard ConfigMap
+# at /var/lib/grafana/dashboards/, so Grafana reads it at startup and any time
+# the pod restarts.
+#
+# Adding more dashboards: create a new ConfigMap containing the dashboard JSON
+# and mount it at /var/lib/grafana/dashboards/. The file will be picked up
+# on the next Grafana restart.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: kafka-lab
+  labels:
+    app: grafana
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: grafana
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: kafka-dashboards
+        orgId: 1
+        folder: "Kafka"
+        folderUid: kafka
+        type: file
+        disableDeletion: true
+        editable: false
+        updateIntervalSeconds: 30
+        options:
+          path: /var/lib/grafana/dashboards

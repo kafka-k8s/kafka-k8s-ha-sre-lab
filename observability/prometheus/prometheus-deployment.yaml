@@ -1,0 +1,90 @@
+# Prometheus Deployment and Service.
+#
+# Prometheus is deployed as a single-replica Deployment in the kafka-lab
+# namespace. For this local lab, data is stored in an emptyDir volume, which
+# means metrics are lost when the pod restarts. This is acceptable for a
+# short-lived learning environment.
+#
+# Production note: Use a PersistentVolumeClaim with sufficient retention and
+# configure remote_write to a long-term storage backend (Thanos, Cortex, etc.)
+# for production Prometheus deployments.
+#
+# Configuration volumes:
+#   prometheus-config   → /etc/prometheus/prometheus.yml
+#   kafka-alert-rules   → /etc/prometheus/rules/kafka-alert-rules.yaml
+#
+# Access: use 'make port-forward-prometheus' to reach the UI at
+# http://localhost:9090 while the port-forward is running.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: kafka-lab
+  labels:
+    app: prometheus
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+        app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+        app.kubernetes.io/component: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.51.2
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=12h"
+            - "--web.enable-lifecycle"
+            - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+            - "--web.console.templates=/usr/share/prometheus/consoles"
+          ports:
+            - name: http
+              containerPort: 9090
+              protocol: TCP
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus/prometheus.yml
+              subPath: prometheus.yml
+            - name: rules
+              mountPath: /etc/prometheus/rules
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: rules
+          configMap:
+            name: kafka-alert-rules
+        - name: data
+          emptyDir: {}

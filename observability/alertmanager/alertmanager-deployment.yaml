@@ -1,0 +1,80 @@
+# Alertmanager Deployment and Service.
+#
+# Alertmanager is deployed as a single-replica Deployment in the kafka-lab
+# namespace. For this local lab, alert state (silences, notification log) is
+# stored in an emptyDir volume and is lost when the pod restarts. This means
+# silences and inhibitions do not survive pod restarts — acceptable in a lab.
+#
+# Production note: Use a PersistentVolumeClaim for --storage.path to preserve
+# silences and notification history across restarts. Consider a 3-replica
+# Alertmanager cluster with --cluster.peer flags for HA.
+#
+# Volume mounts:
+#   alertmanager-config → /etc/alertmanager/alertmanager.yml
+#
+# Access: make port-forward-alertmanager → http://localhost:9093
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: kafka-lab
+  labels:
+    app: alertmanager
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: alertmanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+        app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+        app.kubernetes.io/component: alertmanager
+    spec:
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.27.0
+          args:
+            - "--config.file=/etc/alertmanager/alertmanager.yml"
+            - "--storage.path=/alertmanager"
+            - "--web.listen-address=:9093"
+            - "--log.level=warn"
+          ports:
+            - name: http
+              containerPort: 9093
+              protocol: TCP
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+              cpu: 200m
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9093
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9093
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager/alertmanager.yml
+              subPath: alertmanager.yml
+            - name: data
+              mountPath: /alertmanager
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+        - name: data
+          emptyDir: {}

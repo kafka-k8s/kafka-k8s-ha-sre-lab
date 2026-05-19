@@ -103,6 +103,24 @@ spec:
       log.retention.hours: 24
       # Smaller log segments to speed up local log compaction.
       log.segment.bytes: 107374182
+    # JMX Prometheus Exporter configuration.
+    # Strimzi mounts this ConfigMap into each broker pod and starts the
+    # exporter on port 9404. Prometheus scrapes that port for Kafka metrics.
+    # The ConfigMap is defined in manifests/kafka/kafka-metrics-config.yaml.
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics-config
+          key: kafka-metrics-config.yml
+  # Kafka Exporter provides consumer group lag and topic partition metrics.
+  # It runs as a separate Deployment managed by Strimzi and exposes metrics
+  # on port 9308 for Prometheus to scrape.
+  # These metrics are required for the ConsumerLagHigh alert and the Grafana
+  # consumer lag panel.
+  kafkaExporter:
+    topicRegex: ".*"
+    groupRegex: ".*"
   # Entity Operator manages KafkaTopic and KafkaUser custom resources.
   # It must be present for 'kubectl apply -f manifests/topics/' to work.
   entityOperator:
