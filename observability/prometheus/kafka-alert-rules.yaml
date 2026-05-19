@@ -1,0 +1,220 @@
+# Kafka alert rules for Prometheus.
+#
+# All rules target the local Kind lab. Thresholds are intentionally
+# conservative so that a broker deletion test reliably fires alerts.
+#
+# Alert → Runbook mapping:
+#   KafkaBrokerDown              → docs/incident-runbook.md#broker-down
+#   KafkaClusterBrokerCountLow   → docs/incident-runbook.md#broker-down
+#   KafkaUnderReplicatedPartitions → docs/incident-runbook.md#under-replicated-partitions
+#   KafkaOfflinePartitions       → docs/incident-runbook.md#kafka-unavailable
+#   KafkaActiveControllerCount   → docs/incident-runbook.md#kafka-unavailable
+#   KafkaBrokerUnreachable       → docs/incident-runbook.md#broker-down
+#   StrimziOperatorDown          → docs/incident-runbook.md#kafka-unavailable
+#   ConsumerLagHigh              → docs/incident-runbook.md#consumer-lag-high
+#
+# Local limitation: KafkaPodCrashLooping requires kube-state-metrics to
+# provide restart count data. It is not implemented in this phase.
+# Add kube-state-metrics in a future phase to enable restart-based alerting.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-alert-rules
+  namespace: kafka-lab
+  labels:
+    app: prometheus
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: prometheus-rules
+data:
+  kafka-alert-rules.yaml: |
+    groups:
+      - name: kafka-broker-health
+        interval: 15s
+        rules:
+
+          # -------------------------------------------------------------------
+          # KafkaBrokerDown
+          # Fires when any individual Kafka broker scrape target becomes
+          # unreachable. This alert fires within one scrape interval of the
+          # broker pod becoming unavailable, making it the fastest failure signal.
+          # -------------------------------------------------------------------
+          - alert: KafkaBrokerDown
+            expr: up{job="kafka-brokers"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Kafka broker is down (pod {{ $labels.pod }})"
+              description: >-
+                Prometheus cannot reach the Kafka broker metrics endpoint on
+                pod {{ $labels.pod }} in namespace {{ $labels.namespace }}.
+                The broker may be restarting, pending, or in a crash loop.
+                Check: kubectl get pods -n {{ $labels.namespace }} -o wide
+                Runbook: docs/incident-runbook.md#broker-down
+
+          # -------------------------------------------------------------------
+          # KafkaClusterBrokerCountLow
+          # Fires when fewer than 3 brokers are reachable. A 3-broker KRaft
+          # cluster can tolerate one broker loss while still meeting
+          # min.insync.replicas=2 for producer acks=all. Fewer than 2 brokers
+          # breaks producer durability.
+          # -------------------------------------------------------------------
+          - alert: KafkaClusterBrokerCountLow
+            expr: count(up{job="kafka-brokers"} == 1) < 3
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Kafka cluster has fewer than 3 reachable brokers"
+              description: >-
+                Only {{ $value }} of 3 expected Kafka brokers are reachable.
+                Producer acks=all will fail if fewer than 2 brokers are in
+                sync. Check: kubectl get pods -n kafka-lab -o wide
+                Runbook: docs/incident-runbook.md#broker-down
+
+          # -------------------------------------------------------------------
+          # KafkaBrokerUnreachable
+          # Fires when a broker target has been persistently unreachable for
+          # 5 minutes, suggesting a crash loop rather than a transient restart.
+          # -------------------------------------------------------------------
+          - alert: KafkaBrokerUnreachable
+            expr: up{job="kafka-brokers"} == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Kafka broker unreachable for 5+ minutes (pod {{ $labels.pod }})"
+              description: >-
+                Pod {{ $labels.pod }} has been unreachable for more than 5
+                minutes. This may indicate a crash loop or scheduling failure.
+                Check: kubectl describe pod -n {{ $labels.namespace }} {{ $labels.pod }}
+                Check: kubectl logs -n {{ $labels.namespace }} {{ $labels.pod }} --previous
+                Runbook: docs/incident-runbook.md#pod-crash-loop
+
+      - name: kafka-replication-health
+        interval: 15s
+        rules:
+
+          # -------------------------------------------------------------------
+          # KafkaUnderReplicatedPartitions
+          # Fires when any broker reports under-replicated partitions.
+          # This is expected briefly during a broker restart but should clear
+          # within a few minutes of recovery.
+          # -------------------------------------------------------------------
+          - alert: KafkaUnderReplicatedPartitions
+            expr: sum(kafka_server_replicamanager_underreplicatedpartitions) > 0
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Kafka has under-replicated partitions"
+              description: >-
+                {{ $value }} partition(s) are under-replicated.
+                This may be caused by a broker restart or network issues.
+                If all brokers are back to Ready, wait for replicas to catch up.
+                Runbook: docs/incident-runbook.md#under-replicated-partitions
+
+          # -------------------------------------------------------------------
+          # KafkaOfflinePartitions
+          # Fires immediately when offline partitions are detected. An offline
+          # partition means no leader is available for that partition, causing
+          # producers and consumers to fail for affected topics.
+          # -------------------------------------------------------------------
+          - alert: KafkaOfflinePartitions
+            expr: sum(kafka_controller_kafkacontroller_offlinepartitionscount) > 0
+            for: 0m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Kafka has offline partitions"
+              description: >-
+                {{ $value }} partition(s) are offline. Producers and consumers
+                for affected topics will fail. Requires immediate attention.
+                Check: kubectl get pods -n kafka-lab -o wide
+                Runbook: docs/incident-runbook.md#kafka-unavailable
+
+          # -------------------------------------------------------------------
+          # KafkaActiveControllerCount
+          # A healthy KRaft cluster must always have exactly one active
+          # controller. Zero means a controller election is in progress or has
+          # failed. More than one should not occur in KRaft mode.
+          # -------------------------------------------------------------------
+          - alert: KafkaActiveControllerCount
+            expr: sum(kafka_controller_kafkacontroller_activecontrollercount) != 1
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Kafka active controller count is not 1"
+              description: >-
+                Active controller count is {{ $value }}, expected 1.
+                The KRaft controller quorum may be disrupted.
+                Check: kubectl get pods -n kafka-lab -o wide
+                Runbook: docs/incident-runbook.md#kafka-unavailable
+
+      - name: strimzi-operator-health
+        interval: 15s
+        rules:
+
+          # -------------------------------------------------------------------
+          # StrimziOperatorDown
+          # Fires when the Strimzi Cluster Operator cannot be scraped.
+          # Without the operator, Kafka custom resource changes are not
+          # reconciled, which blocks topic creation, scaling, and upgrades.
+          # -------------------------------------------------------------------
+          - alert: StrimziOperatorDown
+            expr: up{job="strimzi-operator"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Strimzi Cluster Operator is unreachable"
+              description: >-
+                Prometheus cannot reach the Strimzi operator metrics endpoint.
+                New Kafka, KafkaTopic, or KafkaUser changes will not reconcile.
+                Check: kubectl get pods -n kafka-lab | grep strimzi
+                Runbook: docs/incident-runbook.md#kafka-unavailable
+
+      - name: kafka-consumer-lag
+        interval: 30s
+        rules:
+
+          # -------------------------------------------------------------------
+          # ConsumerLagHigh
+          # Fires when the total consumer group lag for the learning-events
+          # topic exceeds 100 messages. This threshold is intentionally low for
+          # the local lab to make the alert observable during testing.
+          # In production, tune this threshold to your SLO requirements.
+          #
+          # This alert requires Kafka Exporter (kafkaExporter: {} in Kafka CR).
+          # If kafka_consumergroup_lag is absent, the alert will not fire.
+          # -------------------------------------------------------------------
+          - alert: ConsumerLagHigh
+            expr: sum(kafka_consumergroup_lag{topic="learning-events"}) > 100
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Consumer lag is high on topic learning-events"
+              description: >-
+                Total consumer lag for topic learning-events is {{ $value }}
+                messages. Consumers may be falling behind producers.
+                Check: kubectl get pods -n kafka-lab
+                Runbook: docs/incident-runbook.md#consumer-lag-high
+
+          # -------------------------------------------------------------------
+          # KafkaExporterDown
+          # Fires when Kafka Exporter cannot be scraped. Without it, consumer
+          # lag and topic partition metrics are unavailable.
+          # -------------------------------------------------------------------
+          - alert: KafkaExporterDown
+            expr: up{job="kafka-exporter"} == 0
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Kafka Exporter is unreachable"
+              description: >-
+                Prometheus cannot reach the Kafka Exporter metrics endpoint.
+                Consumer lag metrics will be unavailable until it recovers.
+                Check: kubectl get pods -n kafka-lab | grep exporter

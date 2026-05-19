@@ -1,0 +1,26 @@
+# Alertmanager ClusterIP Service.
+#
+# Port 9093 is the standard Alertmanager HTTP/API port.
+# Prometheus routes alerts to http://alertmanager:9093 (configured in
+# prometheus-config.yaml alerting.alertmanagers).
+#
+# Access locally: make port-forward-alertmanager
+# Then open: http://localhost:9093
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: kafka-lab
+  labels:
+    app: alertmanager
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/component: alertmanager
+spec:
+  type: ClusterIP
+  selector:
+    app: alertmanager
+  ports:
+    - name: http
+      port: 9093
+      targetPort: 9093
+      protocol: TCP

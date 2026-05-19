@@ -28,7 +28,11 @@ STRIMZI_VERSION ?= 0.43.0
 .PHONY: help \
 	cluster-up-docker cluster-up-podman cluster-down nodes \
 	install-strimzi deploy-kafka create-topic status port-forward \
-	produce consume kill-broker verify-ha clean
+	produce consume kill-broker verify-ha \
+	deploy-observability delete-observability observability-status \
+	port-forward-prometheus port-forward-grafana port-forward-alertmanager \
+	validate-observability \
+	clean
 
 help:
 	@echo ""
@@ -54,6 +58,15 @@ help:
 	@echo "Failure testing:"
 	@echo "  make kill-broker          Delete one Kafka broker pod"
 	@echo "  make verify-ha            Wait for all broker pods to recover"
+	@echo ""
+	@echo "Observability:"
+	@echo "  make deploy-observability      Deploy Prometheus, Grafana, Alertmanager"
+	@echo "  make delete-observability      Remove observability components"
+	@echo "  make observability-status      Show observability pod and service status"
+	@echo "  make port-forward-prometheus   Forward Prometheus to localhost:9090"
+	@echo "  make port-forward-grafana      Forward Grafana to localhost:3000"
+	@echo "  make port-forward-alertmanager Forward Alertmanager to localhost:9093"
+	@echo "  make validate-observability    Run observability validation checks"
 	@echo ""
 	@echo "  make clean                Delete the Kind cluster"
 	@echo ""
@@ -152,6 +165,100 @@ kill-broker:
 
 verify-ha:
 	NAMESPACE=$(NAMESPACE) KUBECTL_BIN=$(KUBECTL_BIN) bash scripts/verify-ha.sh
+
+# ---------------------------------------------------------------------------
+# Observability
+# Deploy Prometheus, Grafana, and Alertmanager for local Kafka monitoring.
+# Run 'make deploy-kafka' before deploying observability so that the Kafka
+# cluster is present before Prometheus starts scraping.
+# ---------------------------------------------------------------------------
+
+PROM_LOCAL_PORT         ?= 9090
+GRAFANA_LOCAL_PORT      ?= 3000
+ALERTMANAGER_LOCAL_PORT ?= 9093
+
+deploy-observability:
+	@echo "Applying Kafka metrics config and updating Kafka cluster..."
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f manifests/kafka/kafka-metrics-config.yaml
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f manifests/kafka/kafka-cluster.yaml
+	@echo ""
+	@echo "Applying Prometheus RBAC (cluster-scoped resources)..."
+	$(KUBECTL_BIN) apply -f observability/prometheus/prometheus-rbac.yaml
+	@echo ""
+	@echo "Applying Prometheus components..."
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/prometheus/prometheus-config.yaml
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/prometheus/kafka-alert-rules.yaml
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/prometheus/prometheus-deployment.yaml
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/prometheus/prometheus-service.yaml
+	@echo ""
+	@echo "Applying Grafana components..."
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/grafana/grafana-datasource.yaml
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/grafana/grafana-dashboard-provider.yaml
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/grafana/kafka-dashboard.yaml
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/grafana/grafana-deployment.yaml
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/grafana/grafana-service.yaml
+	@echo ""
+	@echo "Applying Alertmanager components..."
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/alertmanager/alertmanager-config.yaml
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/alertmanager/alertmanager-deployment.yaml
+	$(KUBECTL_BIN) apply -n $(NAMESPACE) -f observability/alertmanager/alertmanager-service.yaml
+	@echo ""
+	@echo "Observability components applied."
+	@echo "Allow 1-2 minutes for pods to become ready."
+	@echo "Monitor with: make observability-status"
+
+delete-observability:
+	@echo "Removing observability components..."
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/alertmanager/alertmanager-service.yaml
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/alertmanager/alertmanager-deployment.yaml
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/alertmanager/alertmanager-config.yaml
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/grafana/grafana-service.yaml
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/grafana/grafana-deployment.yaml
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/grafana/kafka-dashboard.yaml
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/grafana/grafana-dashboard-provider.yaml
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/grafana/grafana-datasource.yaml
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/prometheus/prometheus-service.yaml
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/prometheus/prometheus-deployment.yaml
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/prometheus/kafka-alert-rules.yaml
+	-$(KUBECTL_BIN) delete -n $(NAMESPACE) -f observability/prometheus/prometheus-config.yaml
+	-$(KUBECTL_BIN) delete -f observability/prometheus/prometheus-rbac.yaml
+	@echo "Observability components removed."
+
+observability-status:
+	@echo "=== Observability Pods ==="
+	@$(KUBECTL_BIN) get pods -n $(NAMESPACE) \
+	  -l 'app in (prometheus,grafana,alertmanager)' -o wide 2>/dev/null \
+	  || echo "No observability pods found."
+	@echo ""
+	@echo "=== Kafka Exporter ==="
+	@$(KUBECTL_BIN) get pods -n $(NAMESPACE) \
+	  -l strimzi.io/name=kafka-cluster-kafka-exporter 2>/dev/null \
+	  || echo "Kafka Exporter not found."
+	@echo ""
+	@echo "=== Observability Services ==="
+	@$(KUBECTL_BIN) get svc -n $(NAMESPACE) 2>/dev/null | \
+	  grep -E 'NAME|prometheus|grafana|alertmanager' || echo "No observability services found."
+
+port-forward-prometheus:
+	@echo "Forwarding Prometheus to localhost:$(PROM_LOCAL_PORT)"
+	@echo "Open: http://localhost:$(PROM_LOCAL_PORT)"
+	@echo "Press Ctrl+C to stop."
+	$(KUBECTL_BIN) -n $(NAMESPACE) port-forward svc/prometheus $(PROM_LOCAL_PORT):9090
+
+port-forward-grafana:
+	@echo "Forwarding Grafana to localhost:$(GRAFANA_LOCAL_PORT)"
+	@echo "Open: http://localhost:$(GRAFANA_LOCAL_PORT)  (admin / admin)"
+	@echo "Press Ctrl+C to stop."
+	$(KUBECTL_BIN) -n $(NAMESPACE) port-forward svc/grafana $(GRAFANA_LOCAL_PORT):3000
+
+port-forward-alertmanager:
+	@echo "Forwarding Alertmanager to localhost:$(ALERTMANAGER_LOCAL_PORT)"
+	@echo "Open: http://localhost:$(ALERTMANAGER_LOCAL_PORT)"
+	@echo "Press Ctrl+C to stop."
+	$(KUBECTL_BIN) -n $(NAMESPACE) port-forward svc/alertmanager $(ALERTMANAGER_LOCAL_PORT):9093
+
+validate-observability:
+	NAMESPACE=$(NAMESPACE) KUBECTL_BIN=$(KUBECTL_BIN) bash scripts/validate-observability.sh
 
 # ---------------------------------------------------------------------------
 # Cleanup
