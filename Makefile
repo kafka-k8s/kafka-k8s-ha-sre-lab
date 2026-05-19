@@ -1,4 +1,4 @@
-CLUSTER_NAME ?= kafka-kubernetes-ha-sre-lab
+CLUSTER_NAME ?= kafka-k8s-ha-sre-lab
 KIND_CONFIG ?= kind/kind-cluster.yaml
 NAMESPACE ?= kafka-lab
 STRIMZI_MANIFESTS := $(wildcard manifests/strimzi/*.yaml manifests/strimzi/*.yml)
@@ -47,47 +47,47 @@ install-strimzi:
 ifneq ($(strip $(STRIMZI_MANIFESTS)),)
 	kubectl apply -n $(NAMESPACE) -f manifests/strimzi/
 else
-	@echo "Strimzi manifests are not implemented yet. See specs/kafka-kubernetes-ha-sre-lab/tasks.md P3-002."
+	@echo "Strimzi manifests are not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P3-002."
 endif
 
 deploy-kafka:
 ifneq ($(strip $(KAFKA_MANIFESTS)),)
 	kubectl apply -n $(NAMESPACE) -f manifests/kafka/
 else
-	@echo "Kafka manifests are not implemented yet. See specs/kafka-kubernetes-ha-sre-lab/tasks.md P3-003."
+	@echo "Kafka manifests are not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P3-003."
 endif
 
 create-topic:
 ifneq ($(strip $(TOPIC_MANIFESTS)),)
 	kubectl apply -n $(NAMESPACE) -f manifests/topics/
 else
-	@echo "Topic manifests are not implemented yet. See specs/kafka-kubernetes-ha-sre-lab/tasks.md P3-004."
+	@echo "Topic manifests are not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P3-004."
 endif
 
 produce:
 ifneq ($(strip $(PRODUCER_APP)),)
 	python apps/producer.py
 else
-	@echo "apps/producer.py is not implemented yet. See specs/kafka-kubernetes-ha-sre-lab/tasks.md P4-001."
+	@echo "apps/producer.py is not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P4-001."
 endif
 
 consume:
 ifneq ($(strip $(CONSUMER_APP)),)
 	python apps/consumer.py
 else
-	@echo "apps/consumer.py is not implemented yet. See specs/kafka-kubernetes-ha-sre-lab/tasks.md P4-002."
+	@echo "apps/consumer.py is not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P4-002."
 endif
 
 kill-broker:
 ifneq ($(strip $(KILL_BROKER_SCRIPT)),)
 	sh scripts/kill-broker.sh
 else
-	@echo "scripts/kill-broker.sh is not implemented yet. See specs/kafka-kubernetes-ha-sre-lab/tasks.md P6-001."
+	@echo "scripts/kill-broker.sh is not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P6-001."
 endif
 
 verify-ha:
 ifneq ($(strip $(VERIFY_HA_SCRIPT)),)
 	sh scripts/verify-ha.sh
 else
-	@echo "scripts/verify-ha.sh is not implemented yet. See specs/kafka-kubernetes-ha-sre-lab/tasks.md P6-003."
+	@echo "scripts/verify-ha.sh is not implemented yet. See specs/kafka-k8s-ha-sre-lab/tasks.md P6-003."
 endif

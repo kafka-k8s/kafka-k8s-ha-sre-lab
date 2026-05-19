@@ -1,4 +1,4 @@
-# Task Breakdown: kafka-kubernetes-ha-sre-lab
+# Task Breakdown: kafka-k8s-ha-sre-lab
 
 ## Phase 1: Repository Foundation
 
@@ -6,7 +6,7 @@
 | --- | --- | --- | --- | --- |
 | P1-001 | P0 | Create README with project purpose, quick start, scope, and roadmap. | `README.md` | README explains local-first Kafka HA lab, Docker primary path, Podman alternative, limitations, and resume value. |
 | P1-002 | P0 | Create project constitution. | `CONSTITUTION.md` | Constitution includes local-first design, reproducibility, SRE thinking, production trade-offs, observability, failure testing, security, simplicity, documentation quality, and no cloud dependency. |
-| P1-003 | P0 | Create specs directory and core spec files. | `specs/kafka-kubernetes-ha-sre-lab/*` | Spec, clarification, plan, and tasks exist and are internally consistent. |
+| P1-003 | P0 | Create specs directory and core spec files. | `specs/kafka-k8s-ha-sre-lab/*` | Spec, clarification, plan, and tasks exist and are internally consistent. |
 | P1-004 | P0 | Create docs directory and architecture overview. | `docs/architecture.md` | Architecture document includes component descriptions and Mermaid diagrams. |
 
 ## Phase 2: Local Kubernetes Foundation
@@ -72,4 +72,3 @@
 | P8-003 | P0 | Validate documentation consistency. | `README.md`, `docs/`, `specs/` | Docs consistently describe Docker primary, Podman alternative, Kind primary, KRaft mode, and no AWS dependency. |
 | P8-004 | P0 | Validate local setup flow. | `README.md`, `docs/local-testing.md`, `Makefile` | A clean machine can follow the documented setup path to the current implementation stage. |
 | P8-005 | P0 | Validate no AWS dependency exists in MVP. | All docs and scripts | No MVP command requires AWS credentials, EKS, IAM, cloud storage, or cloud load balancers. |
-

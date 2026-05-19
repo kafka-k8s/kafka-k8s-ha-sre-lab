@@ -1,4 +1,4 @@
-# Implementation Plan: kafka-kubernetes-ha-sre-lab
+# Implementation Plan: kafka-k8s-ha-sre-lab
 
 ## Technical Architecture
 
@@ -12,7 +12,7 @@ The first implementation pass creates documentation, project structure, the Kind
 README.md
 CONSTITUTION.md
 specs/
-  kafka-kubernetes-ha-sre-lab/
+  kafka-k8s-ha-sre-lab/
     spec.md
     clarification.md
     plan.md
@@ -297,4 +297,3 @@ Future versions will implement:
 - YAML validation workflow.
 - End-to-end local smoke test.
 - Optional k3s, kubeadm, and EKS guides.
-

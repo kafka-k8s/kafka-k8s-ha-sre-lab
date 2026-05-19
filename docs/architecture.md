@@ -2,7 +2,7 @@
 
 ## Overview
 
-`kafka-kubernetes-ha-sre-lab` is a local-first Kafka HA lab. It uses Kind to run a Kubernetes cluster on a developer workstation and Strimzi to operate Kafka in KRaft mode.
+`kafka-k8s-ha-sre-lab` is a local-first Kafka HA lab. It uses Kind to run a Kubernetes cluster on a developer workstation and Strimzi to operate Kafka in KRaft mode.
 
 The architecture is intentionally small enough to run locally, but it mirrors production concerns: broker placement, persistent storage, replication, monitoring, alerts, runbooks, and failure testing.
 
@@ -133,4 +133,3 @@ Future versions can add:
 - k3s, kubeadm, or EKS guides.
 - GitOps with Argo CD or Flux.
 - Load testing and upgrade testing.
-

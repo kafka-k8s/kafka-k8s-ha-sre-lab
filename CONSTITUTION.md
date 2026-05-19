@@ -1,4 +1,4 @@
-# kafka-kubernetes-ha-sre-lab Constitution
+# kafka-k8s-ha-sre-lab Constitution
 
 Version: 1.0.0
 Ratified: 2026-05-19
@@ -69,4 +69,3 @@ The MVP must not require AWS credentials, EKS, managed load balancers, cloud dis
 ## Change Discipline
 
 Changes should preserve the local-first path before adding optional environments. New features should include documentation, validation steps, and operational notes. Any production-sounding claim must be supported by a specific design explanation or clearly scoped as educational.
-

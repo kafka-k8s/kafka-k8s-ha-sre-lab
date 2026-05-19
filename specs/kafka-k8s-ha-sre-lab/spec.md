@@ -1,10 +1,10 @@
-# Specification: kafka-kubernetes-ha-sre-lab
+# Specification: kafka-k8s-ha-sre-lab
 
 ## Problem Statement
 
 Engineers often need practical Kafka high availability experience, but production-like Kafka environments commonly depend on cloud accounts, managed Kubernetes, or shared infrastructure. This blocks learning for engineers without AWS access and makes portfolio projects less reproducible.
 
-`kafka-kubernetes-ha-sre-lab` provides a local-first SRE lab for running Apache Kafka on Kubernetes with Strimzi in KRaft mode. The lab demonstrates production-minded reliability concepts while staying runnable on a normal PC.
+`kafka-k8s-ha-sre-lab` provides a local-first SRE lab for running Apache Kafka on Kubernetes with Strimzi in KRaft mode. The lab demonstrates production-minded reliability concepts while staying runnable on a normal PC.
 
 ## Target Users
 
@@ -203,4 +203,3 @@ Sample event:
   "timestamp": "2026-05-19T12:00:00Z"
 }
 ```
-

@@ -1,4 +1,6 @@
-# kafka-kubernetes-ha-sre-lab
+# kafka-k8s-ha-sre-lab
+
+Repository: <https://github.com/kafka-k8s/kafka-k8s-ha-sre-lab>
 
 Local-first, production-minded SRE lab for running highly available Apache Kafka on Kubernetes with Strimzi, KRaft mode, Kind, Docker or Podman, Prometheus, Grafana, Alertmanager, and failure simulation workflows.
 
@@ -38,7 +40,14 @@ Prerequisites:
 - `kubectl` installed.
 - `make` installed.
 
-Create the local cluster:
+Clone and create the local cluster:
+
+```sh
+git clone https://github.com/kafka-k8s/kafka-k8s-ha-sre-lab.git
+cd kafka-k8s-ha-sre-lab
+```
+
+Then run:
 
 ```sh
 make cluster-up-docker
@@ -150,9 +159,9 @@ Sample event:
 ## Documentation Map
 
 - [CONSTITUTION.md](CONSTITUTION.md): Engineering principles.
-- [specs/kafka-kubernetes-ha-sre-lab/spec.md](specs/kafka-kubernetes-ha-sre-lab/spec.md): Product and technical specification.
-- [specs/kafka-kubernetes-ha-sre-lab/plan.md](specs/kafka-kubernetes-ha-sre-lab/plan.md): Implementation plan.
-- [specs/kafka-kubernetes-ha-sre-lab/tasks.md](specs/kafka-kubernetes-ha-sre-lab/tasks.md): Step-by-step task breakdown.
+- [specs/kafka-k8s-ha-sre-lab/spec.md](specs/kafka-k8s-ha-sre-lab/spec.md): Product and technical specification.
+- [specs/kafka-k8s-ha-sre-lab/plan.md](specs/kafka-k8s-ha-sre-lab/plan.md): Implementation plan.
+- [specs/kafka-k8s-ha-sre-lab/tasks.md](specs/kafka-k8s-ha-sre-lab/tasks.md): Step-by-step task breakdown.
 - [docs/architecture.md](docs/architecture.md): Architecture diagrams and component flow.
 - [docs/ha-design.md](docs/ha-design.md): Kafka HA design notes.
 - [docs/kubernetes-vs-vm.md](docs/kubernetes-vs-vm.md): Kubernetes versus VM/bare metal trade-offs.
@@ -178,4 +187,3 @@ Sample event:
 ## Resume Bullet Example
 
 Designed and implemented a local-first Kafka high availability SRE lab on Kubernetes using Kind, Strimzi, KRaft mode, Prometheus, Grafana, Alertmanager, and failure simulation scripts to demonstrate broker recovery, topic replication, consumer lag monitoring, and production-minded operational runbooks without cloud dependencies.
-

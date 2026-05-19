@@ -3,6 +3,5 @@ kind: Namespace
 metadata:
   name: kafka-lab
   labels:
-    app.kubernetes.io/name: kafka-kubernetes-ha-sre-lab
-    app.kubernetes.io/part-of: kafka-kubernetes-ha-sre-lab
-
+    app.kubernetes.io/name: kafka-k8s-ha-sre-lab
+    app.kubernetes.io/part-of: kafka-k8s-ha-sre-lab

@@ -1,4 +1,4 @@
-# Clarification: kafka-kubernetes-ha-sre-lab
+# Clarification: kafka-k8s-ha-sre-lab
 
 This file records implementation defaults for open questions. These decisions allow the MVP to move forward without blocking on optional architecture choices.
 
@@ -32,4 +32,3 @@ This file records implementation defaults for open questions. These decisions al
 ## Explicit Local Testing Boundary
 
 The MVP validates control-plane behavior, operator reconciliation, broker pod recovery, topic availability, and basic message flow. It does not validate production storage durability, noisy-neighbor behavior, cloud load balancer behavior, multi-zone placement, realistic throughput, or cross-region disaster recovery.
-
