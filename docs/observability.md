@@ -13,6 +13,8 @@ No cloud service, managed monitoring platform, or Prometheus Operator is needed.
 
 ## Architecture
 
+![Observability pipeline diagram](images/observability-pipeline.png)
+
 ```
 Kafka Brokers (port 9404)    ──┐
 Kafka Exporter (port 9404)   ──┼──→ Prometheus (port 9090) ──→ Alertmanager (port 9093)

@@ -2,6 +2,8 @@
 
 [![Kind E2E HA](https://github.com/kafka-k8s/kafka-k8s-ha-sre-lab/actions/workflows/kind-e2e-ha.yml/badge.svg)](https://github.com/kafka-k8s/kafka-k8s-ha-sre-lab/actions/workflows/kind-e2e-ha.yml)
 
+![kafka-k8s-ha-sre-lab banner](docs/images/kafka-k8s-ha-sre-lab-banner.png)
+
 Repository: <https://github.com/kafka-k8s/kafka-k8s-ha-sre-lab>
 
 Local-first, production-minded SRE lab for running highly available Apache Kafka on Kubernetes with Strimzi, KRaft mode, Kind, Docker or Podman, Prometheus, Grafana, Alertmanager, and failure simulation workflows.
@@ -15,6 +17,8 @@ Many Kafka HA examples assume managed cloud infrastructure, large clusters, or i
 The goal is not to claim that Kafka should always run on Kubernetes. The goal is to make the trade-offs visible and give engineers a repeatable place to practice.
 
 ## Architecture Summary
+
+![Infrastructure architecture diagram](docs/images/infrastructure-architecture.png)
 
 The MVP target architecture is:
 
@@ -115,6 +119,8 @@ The consumer reads from the beginning of the topic and exits after 30 seconds of
 
 **Step 7: Deploy observability**
 
+![Observability pipeline diagram](docs/images/observability-pipeline.png)
+
 ```sh
 make deploy-observability
 make observability-status
@@ -200,6 +206,8 @@ Minikube is documentation-only for the MVP. It can be useful for experiments, bu
 - Prometheus metrics, Grafana dashboards, and Alertmanager alerts.
 - Incident runbooks and production readiness thinking.
 
+![Broker failure recovery diagram](docs/images/broker-failure-recovery.png)
+
 ## What This Project Does Not Claim
 
 - It is not a drop-in production Kafka platform.
@@ -220,6 +228,8 @@ Minikube is documentation-only for the MVP. It can be useful for experiments, bu
 - Production checklist discipline.
 
 ## Core Demo Scenario
+
+![End-to-end workflow diagram](docs/images/e2e-workflow.png)
 
 The intended end-to-end demo is:
 

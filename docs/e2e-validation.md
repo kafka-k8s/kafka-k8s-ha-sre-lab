@@ -4,6 +4,8 @@ This runbook validates the current MVP on local Kind with Docker, including the
 Phase 4 observability stack. It does not install AWS/EKS, Elasticsearch,
 MirrorMaker 2, or any cloud service.
 
+![End-to-end workflow diagram](images/e2e-workflow.png)
+
 ## Prerequisites
 
 - Docker running locally.

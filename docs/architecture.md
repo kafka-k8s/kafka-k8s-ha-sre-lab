@@ -6,6 +6,10 @@
 
 The architecture is intentionally small enough to run locally, but it mirrors production concerns: broker placement, persistent storage, replication, monitoring, alerts, runbooks, and failure testing.
 
+## Infrastructure Diagram
+
+![Infrastructure architecture diagram](images/infrastructure-architecture.png)
+
 ## Component Diagram
 
 ```mermaid

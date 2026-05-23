@@ -1,5 +1,7 @@
 # Kafka HA Design
 
+![Broker failure recovery diagram](images/broker-failure-recovery.png)
+
 ## High Availability Goal
 
 The lab demonstrates how Kafka remains functional during a single broker pod failure when topic replication and producer durability settings are configured correctly.
@@ -107,4 +109,3 @@ Kind worker nodes are containers on one machine. A local Kind cluster cannot pro
 - Sustained throughput under real load.
 
 The lab is still valuable because it makes Kafka and Strimzi failure behavior visible and repeatable.
-
